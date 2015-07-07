@@ -45,7 +45,53 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <child>
-                      <placeholder/>
+		      <object class="GtkToolbar" id="main-toolbar">
+			<property name="visible">True</property>
+			<property name="can_focus">False</property>
+			<child>
+			  <object class="GtkToolButton" id="new-object-button">
+			    <property name="visible">True</property>
+			    <property name="can_focus">False</property>
+			    <property name="use_underline">True</property>
+			    <property name="label" translatable="yes">_New...</property>
+			    <property name="icon_name">list-add</property>
+			  </object>
+			</child>
+			<child>
+			  <object class="GtkSeparatorToolItem" id="sep">
+			    <property name="visible">True</property>
+			    <property name="can_focus">False</property>
+			    <property name="draw">False</property>
+			  </object>
+			  <packing>
+			    <property name="expand">True</property>
+			  </packing>
+			</child>
+			<child>
+			  <object class="GtkToolItem">
+			    <property name="visible">True</property>
+			    <property name="can_focus">False</property>
+			    <child>
+			      <object class="GtkBox">
+				<property name="orientation">horizontal</property>
+				<property name="visible">True</property>
+				<property name="can_focus">False</property>
+				<child>
+				  <object class="GtkEntry" id="filter-entry">
+				    <property name="visible">True</property>
+				    <property name="can_focus">True</property>
+				    <property name="placeholder_text" translatable="yes">Filter</property>
+				  </object>
+				  <packing>
+				    <property name="expand">False</property>
+				    <property name="fill">True</property>
+				  </packing>
+				</child>
+			      </object>
+			    </child>
+			  </object>
+			</child>
+		      </object>
                     </child>
                   </object>
                   <packing>
@@ -290,4 +336,119 @@
           </packing>
         </child>
       </object>
+      <menu id="menubar">
+	<submenu id="file-menu">
+          <attribute name="label" translatable="yes">_File</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">_New...</attribute>
+              <attribute name="action">app.file-new</attribute>
+	      <attribute name="accel">&lt;control&gt;N</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">_Import...</attribute>
+              <attribute name="action">app.file-import</attribute>
+	      <attribute name="accel">&lt;control&gt;I</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">E_xport...</attribute>
+              <attribute name="action">app.file-export</attribute>
+            </item>
+          </section>
+	  <section>
+            <item>
+              <attribute name="label" translatable="yes">_Quit</attribute>
+              <attribute name="action">app.quit</attribute>
+              <attribute name="accel">&lt;control&gt;Q</attribute>
+            </item>
+	  </section>
+	</submenu>
+	<submenu id="edit-menu">
+          <attribute name="label" translatable="yes">_Edit</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">Copy</attribute>
+              <attribute name="action">app.edit-export-clipboard</attribute>
+              <attribute name="accel">&lt;control&gt;C</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">Paste</attribute>
+              <attribute name="action">app.edit-import-clipboard</attribute>
+              <attribute name="accel">&lt;control&gt;V</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">Delete</attribute>
+              <attribute name="action">app.edit-delete</attribute>
+            </item>
+          </section>
+	  <section>
+            <item>
+              <attribute name="label" translatable="yes">Preferences</attribute>
+              <attribute name="action">app.preferences</attribute>
+            </item>
+	  </section>
+	</submenu>
+	<submenu id="remote-menu">
+          <!-- TRANSLATORS: The "Remote" menu contains key operations
+               on remote systems.  -->
+          <attribute name="label" translatable="yes">_Remote</attribute>
+          <attribute name="id">remote-menu</attribute>
+	</submenu>
+	<submenu id="view-menu">
+          <attribute name="label" translatable="yes">_View</attribute>
+          <section>
+            <item>
+              <attribute name="label" translatable="yes">By Keyring</attribute>
+              <attribute name="action">app.view-sidebar</attribute>
+            </item>
+          </section>
+	  <section>
+            <item>
+              <attribute name="label" translatable="yes">Show Personal</attribute>
+              <attribute name="action">app.view-show</attribute>
+	      <attribute name="target">personal</attribute>
+           </item>
+            <item>
+              <attribute name="label" translatable="yes">Show Trusted</attribute>
+              <attribute name="action">app.view-show</attribute>
+	      <attribute name="target">trusted</attribute>
+            </item>
+            <item>
+              <attribute name="label" translatable="yes">Show Any</attribute>
+              <attribute name="action">app.view-show</attribute>
+	      <attribute name="target">any</attribute>
+            </item>
+	  </section>
+	</submenu>
+	<submenu id="help-menu">
+	  <attribute name="label" translatable="yes">_Help</attribute>
+	  <section>
+	    <item>
+	      <attribute name="label" translatable="yes">Contents</attribute>
+	      <attribute name="action">app.help-show</attribute>
+	      <attribute name="accel">F1</attribute>
+	    </item>
+	    <item>
+	      <attribute name="label" translatable="yes">About</attribute>
+	      <attribute name="action">app.about</attribute>
+	    </item>
+	  </section>
+	</submenu>
+      </menu>
+      <menu id="popup">
+	<section id="object-popup">
+	  <section>
+	    <item>
+	      <attribute name="label" translatable="yes">_Delete</attribute>
+	      <attribute name="action">app.edit-delete</attribute>
+	    </item>
+	  </section>
+	  <section>
+	    <item>
+	      <attribute name="label" translatable="yes">_Properties</attribute>
+	      <attribute name="action">app.properties-object</attribute>
+	    </item>
+	  </section>
+	</section>
+      </menu>
 </interface>

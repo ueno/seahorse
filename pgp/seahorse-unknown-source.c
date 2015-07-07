@@ -33,11 +33,13 @@
 
 enum {
 	PROP_0,
+	PROP_NAME,
 	PROP_LABEL,
 	PROP_DESCRIPTION,
 	PROP_ICON,
 	PROP_URI,
-	PROP_ACTIONS
+	PROP_ACTIONS,
+	PROP_MENU
 };
 
 struct _SeahorseUnknownSource {
@@ -84,6 +86,12 @@ seahorse_unknown_source_load_finish (SeahorsePlace *self,
 }
 
 static gchar *
+seahorse_unknown_source_get_name (SeahorsePlace* self)
+{
+	return g_strdup ("");
+}
+
+static gchar *
 seahorse_unknown_source_get_label (SeahorsePlace* self)
 {
 	return g_strdup ("");
@@ -107,8 +115,14 @@ seahorse_unknown_source_get_icon (SeahorsePlace* self)
 	return NULL;
 }
 
-static GtkActionGroup *
+static GActionGroup *
 seahorse_unknown_source_get_actions (SeahorsePlace* self)
+{
+	return NULL;
+}
+
+static GMenuModel *
+seahorse_unknown_source_get_menu (SeahorsePlace* self)
 {
 	return NULL;
 }
@@ -122,6 +136,9 @@ seahorse_unknown_source_get_property (GObject *obj,
 	SeahorsePlace *place = SEAHORSE_PLACE (obj);
 
 	switch (prop_id) {
+	case PROP_NAME:
+		g_value_take_string (value, seahorse_unknown_source_get_name (place));
+		break;
 	case PROP_LABEL:
 		g_value_take_string (value, seahorse_unknown_source_get_label (place));
 		break;
@@ -161,10 +178,12 @@ seahorse_unknown_source_class_init (SeahorseUnknownSourceClass *klass)
 	gobject_class->get_property = seahorse_unknown_source_get_property;
 	gobject_class->finalize = seahorse_unknown_source_finalize;
 
+	g_object_class_override_property (gobject_class, PROP_NAME, "name");
 	g_object_class_override_property (gobject_class, PROP_LABEL, "label");
 	g_object_class_override_property (gobject_class, PROP_DESCRIPTION, "description");
 	g_object_class_override_property (gobject_class, PROP_ICON, "icon");
 	g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
+	g_object_class_override_property (gobject_class, PROP_MENU, "menu");
 	g_object_class_override_property (gobject_class, PROP_URI, "uri");
 }
 
@@ -208,6 +227,8 @@ seahorse_unknown_source_place_iface (SeahorsePlaceIface *iface)
 	iface->get_description = seahorse_unknown_source_get_description;
 	iface->get_icon = seahorse_unknown_source_get_icon;
 	iface->get_label = seahorse_unknown_source_get_label;
+	iface->get_menu = seahorse_unknown_source_get_menu;
+	iface->get_name = seahorse_unknown_source_get_name;
 	iface->get_uri = seahorse_unknown_source_get_uri;
 }
 

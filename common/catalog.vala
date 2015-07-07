@@ -21,7 +21,8 @@
 namespace Seahorse {
 
 public abstract class Catalog : Gtk.Window {
-	public static const string MENU_OBJECT = "ObjectPopup";
+	private static const string MENU_POPUP = "popup";
+	private static const string MENU_MENUBAR = "menubar";
 
 	/* For compatibility with old code */
 	public Gtk.Window window {
@@ -31,14 +32,19 @@ public abstract class Catalog : Gtk.Window {
 	/* Set by the derived classes */
 	public string ui_name { construct; get; }
 
+	public GLib.ActionGroup actions {
+		owned get {
+			return this._actions;
+		}
+	}
+
 	private Gtk.Builder _builder;
-	private Gtk.UIManager _ui_manager;
-	private GLib.HashTable<Gtk.ActionGroup, weak Gtk.ActionGroup> _actions;
-	private Gtk.Action _edit_delete;
-	private Gtk.Action _properties_object;
-	private Gtk.Action _file_export;
-	private Gtk.Action _edit_copy;
-	private GLib.List<Gtk.ActionGroup> _selection_actions;
+	private GLib.HashTable<string,GLib.Menu> _menus;
+	private GLib.ActionGroup _actions;
+	private GLib.SimpleAction _edit_delete;
+	private GLib.SimpleAction _properties_object;
+	private GLib.SimpleAction _file_export;
+	private GLib.SimpleAction _edit_copy;
 	private bool _disposed;
 	private GLib.Settings _settings;
 
@@ -48,34 +54,13 @@ public abstract class Catalog : Gtk.Window {
 
 	construct {
 		this._builder = Util.load_built_contents(this, this.ui_name);
+		this._menus = new GLib.HashTable<string, GLib.Menu>(GLib.str_hash, GLib.str_equal);
 
-		this._actions = new GLib.HashTable<Gtk.ActionGroup, weak Gtk.ActionGroup>(GLib.direct_hash, GLib.direct_equal);
-		this._ui_manager = new Gtk.UIManager();
+		var menubar = this._builder.get_object("menubar");
+		this._menus.set(MENU_MENUBAR, (GLib.Menu) menubar);
 
-		this._ui_manager.add_widget.connect((widget) => {
-			unowned string? name;
-			if (widget is Gtk.MenuBar)
-				name = "menu-placeholder";
-			else if (widget is Gtk.Toolbar)
-				name = "toolbar-placeholder";
-			else
-				name = null;
-			var holder = this._builder.get_object(name);
-			if (holder != null) {
-				((Gtk.Container)holder).add(widget);
-				widget.show();
-			} else {
-				GLib.warning ("no place holder found for: %s", name);
-			}
-		});
-
-		this._ui_manager.pre_activate.connect((action) => {
-			Action.pre_activate(action, this, this);
-		});
-
-		this._ui_manager.post_activate.connect((action) => {
-			Action.post_activate(action);
-		});
+		var popup = this._builder.get_object("popup");
+		this._menus.set(MENU_POPUP, (GLib.Menu) popup);
 
 		/* Load window size for windows that aren't dialogs */
 		var key = "/apps/seahorse/windows/%s/".printf(this.ui_name);
@@ -85,28 +70,16 @@ public abstract class Catalog : Gtk.Window {
 		if (width > 0 && height > 0)
 			this.resize (width, height);
 
-		/* The widgts get added in an idle loop later */
-		try {
-			var path = "/org/gnome/Seahorse/seahorse-%s.ui".printf(this.ui_name);
-			this._ui_manager.add_ui_from_resource(path);
-		} catch (GLib.Error err) {
-			GLib.warning("couldn't load ui description for '%s': %s",
-			             this.ui_name, err.message);
-		}
+		this._actions = new GLib.SimpleActionGroup();
+		var map = (GLib.ActionMap) this._actions;
+		map.add_action_entries(COMMON_ENTRIES, this);
 
-		this.add_accel_group (this._ui_manager.get_accel_group());
-
-		var actions = new Gtk.ActionGroup("main");
-		actions.set_translation_domain(Config.GETTEXT_PACKAGE);
-		actions.add_actions(UI_ENTRIES, this);
-
-		var action = actions.get_action("app-preferences");
-		action.set_visible (Prefs.available());
-		this._edit_delete = actions.get_action("edit-delete");
-		this._properties_object = actions.get_action("properties-object");
-		this._edit_copy = actions.get_action("edit-export-clipboard");
-		this._file_export = actions.get_action("file-export");
-		this._ui_manager.insert_action_group (actions, 0);
+		var action = (GLib.SimpleAction) map.lookup_action("preferences");
+		action.set_enabled (Prefs.available());
+		this._edit_delete = (GLib.SimpleAction) map.lookup_action("edit-delete");
+		this._properties_object = (GLib.SimpleAction) map.lookup_action("properties-object");
+		this._edit_copy = (GLib.SimpleAction) map.lookup_action("edit-export-clipboard");
+		this._file_export = (GLib.SimpleAction) map.lookup_action("file-export");
 
 		Seahorse.Application.get().add_window(this);
 	}
@@ -116,13 +89,6 @@ public abstract class Catalog : Gtk.Window {
 		this._edit_delete = null;
 		this._file_export = null;
 		this._properties_object = null;
-
-		foreach (var group in this._selection_actions)
-			this._ui_manager.remove_action_group(group);
-		this._selection_actions = null;
-
-		this._ui_manager = null;
-		this._actions.remove_all();
 
 		if (!this._disposed) {
 			this._disposed = true;
@@ -153,96 +119,63 @@ public abstract class Catalog : Gtk.Window {
 			if (can_export && can_delete && can_properties)
 				break;
 		}
-
-		this._properties_object.sensitive = can_properties;
-		this._edit_delete.sensitive = can_delete;
-		this._edit_copy.sensitive = can_export;
-		this._file_export.sensitive = can_export;
-
-		foreach (var group in this._selection_actions)
-			group.visible = false;
-		this._selection_actions = lookup_actions_for_objects(objects);
-		foreach (var group in this._selection_actions)
-			group.visible = true;
+		this._properties_object.set_enabled(can_properties);
+		this._edit_delete.set_enabled(can_delete);
+		this._edit_copy.set_enabled(can_export);
+		this._file_export.set_enabled(can_export);
 	}
 
 	public unowned Gtk.Builder get_builder() {
 		return this._builder;
 	}
 
-	public unowned T? get_widget<T>(string name) {
-		return (T)this._builder.get_object(name);
+	public void update_menu(string menu_name,
+							string submodel_name,
+							GLib.MenuModel model_to_merge)
+	{
+		var model = this._menus.get(menu_name);
+		if (model == null)
+			return;
+		Util.merge_menu((GLib.Menu) model,
+						(GLib.Menu) model_to_merge,
+						submodel_name,
+						false);
 	}
 
-	public void ensure_updated() {
-		this._ui_manager.ensure_update();
-	}
-
-	public void include_actions(Gtk.ActionGroup group) {
-		this._ui_manager.insert_action_group(group, 10);
-
-		if (group is Actions) {
-			var actions = (Actions)group;
-			actions.catalog = this;
-
-			var definition = actions.definition;
-			if (definition != null) {
-				try {
-					this._ui_manager.add_ui_from_string (definition, -1);
-				} catch (GLib.Error err) {
-					GLib.warning ("couldn't add ui defintion for action group: %s: %s",
-					              actions.name, definition);
-				}
-			}
-		}
-
-		this._actions.add(group);
+	public void register_collection_menu(Gcr.Collection collection,
+										 GLib.MenuModel model)
+	{
+		this._menus.set (collection.get_type().name(), (GLib.Menu) model);
 	}
 
 	public void show_properties(GLib.Object obj) {
 		Viewable.view(obj, this);
 	}
 
-	public void show_context_menu(string name,
-	                              uint button,
-	                              uint time)
-	{
-		var path = "/%s".printf(name);
-		var menu = this._ui_manager.get_widget(path);
+	private void show_context_menu(string name, uint button, uint time) {
+		var model = this._menus.get(name);
 
-		if (menu == null)
+		if (model == null)
 			return;
-		if (menu is Gtk.Menu) {
-			((Gtk.Menu)menu).popup(null, null, null, button, time);
-			menu.show();
-		} else {
-			GLib.warning("the object /%s isn't a menu", name);
-		}
+		var menu = new Gtk.Menu.from_model(model);
+		menu.attach_to_widget(this, null);
+		((Gtk.Menu)menu).popup(null, null, null, button, time);
 	}
 
-	private GLib.List<Gtk.ActionGroup> lookup_actions_for_objects (GLib.List<GLib.Object> objects) {
-		var table = new GLib.HashTable<Gtk.ActionGroup, weak Gtk.ActionGroup>(GLib.direct_hash, GLib.direct_equal);
-		foreach (var object in objects) {
-			Gtk.ActionGroup? actions = null;
-			object.get("actions", out actions, null);
-			if (actions == null)
-				continue;
-			if (this._actions.lookup(actions) == null)
-				this.include_actions(actions);
-			this._actions.add(actions);
-		}
+	public void show_collection_menu(Gcr.Collection collection,
+									 uint button,
+									 uint time)
+	{
+		show_context_menu(collection.get_type().name(), button, time);
+	}
 
-		var iter = GLib.HashTableIter<Gtk.ActionGroup, weak Gtk.ActionGroup>(table);
-		var results = new GLib.List<Gtk.ActionGroup>();
-		Gtk.ActionGroup group;
-		while (iter.next(out group, null))
-			results.prepend(group);
-
-		return results;
+	public void show_object_menu(uint button, uint time) {
+		show_context_menu(MENU_POPUP, button, time);
 	}
 
 	[CCode (instance_pos = -1)]
-	private void on_app_preferences (Gtk.Action action)
+	private void on_preferences (GLib.SimpleAction action,
+								 GLib.Variant? parameter)
 	{
 		Prefs.show(this, null);
 	}
@@ -274,7 +207,7 @@ public abstract class Catalog : Gtk.Window {
 	};
 
 	[CCode (instance_pos = -1)]
-	private void on_app_about(Gtk.Action action)
+	private void on_about(GLib.SimpleAction action, GLib.Variant? parameter)
 	{
 
 		var about = new Gtk.AboutDialog();
@@ -299,7 +232,8 @@ public abstract class Catalog : Gtk.Window {
 	}
 
 	[CCode (instance_pos = -1)]
-	private void on_object_delete(Gtk.Action action)
+	private void on_object_delete(GLib.SimpleAction action,
+								  GLib.Variant? parameter)
 	{
 		try {
 			var objects = this.get_selected_objects();
@@ -310,21 +244,27 @@ public abstract class Catalog : Gtk.Window {
 	}
 
 	[CCode (instance_pos = -1)]
-	private void on_properties_object(Gtk.Action action) {
+	private void on_properties_object(GLib.SimpleAction action,
+									  GLib.Variant? parameter)
+	{
 		var objects = get_selected_objects();
 		if (objects.length() > 0)
 			this.show_properties(objects.data);
 	}
 
 	[CCode (instance_pos = -1)]
-	private void on_properties_place (Gtk.Action action) {
+	private void on_properties_place (GLib.SimpleAction action,
+									  GLib.Variant? parameter)
+	{
 		var place = this.get_focused_place ();
 		if (place != null)
 			this.show_properties (place);
 	}
 
 	[CCode (instance_pos = -1)]
-	private void on_key_export_file (Gtk.Action action) {
+	private void on_key_export_file (GLib.SimpleAction action,
+									 GLib.Variant? parameter)
+	{
 		try {
 			Exportable.export_to_prompt_wait(this.get_selected_objects(), this);
 		} catch (GLib.Error err) {
@@ -333,7 +273,9 @@ public abstract class Catalog : Gtk.Window {
 	}
 
 	[CCode (instance_pos = -1)]
-	private void on_key_export_clipboard (Gtk.Action action) {
+	private void on_key_export_clipboard (GLib.SimpleAction action,
+										  GLib.Variant? parameter)
+	{
 		uint8[] output;
 		try {
 			var objects = this.get_selected_objects ();
@@ -350,7 +292,9 @@ public abstract class Catalog : Gtk.Window {
 	}
 
 	[CCode (instance_pos = -1)]
-	private void on_help_show(Gtk.Action action) {
+	private void on_help_show(GLib.SimpleAction action,
+							  GLib.Variant? parameter)
+	{
 		try {
 			var document = "help:%s".printf(Config.PACKAGE);
 			GLib.AppInfo.launch_default_for_uri(document, null);
@@ -359,32 +303,16 @@ public abstract class Catalog : Gtk.Window {
 		}
 	}
 
-	private static const Gtk.ActionEntry[] UI_ENTRIES = {
-		/* Top menu items */
-		{ "file-menu", null, N_("_File") },
-		{ "file-export", Gtk.Stock.SAVE_AS, N_("E_xport..."), null,
-		  N_("Export to a file"), on_key_export_file },
-		{ "edit-menu", null, N_("_Edit") },
-		/*Translators: This text refers to deleting an item from its type's backing store*/
-		{ "edit-export-clipboard", Gtk.Stock.COPY, null, "<control>C",
-		  N_("Copy to the clipboard"), on_key_export_clipboard },
-		{ "edit-delete", Gtk.Stock.DELETE, N_("_Delete"), null,
-		  N_("Delete selected items"), on_object_delete },
-		{ "properties-object", Gtk.Stock.PROPERTIES, null, null,
-		  N_("Show the properties of this item"), on_properties_object },
-		{ "properties-keyring", Gtk.Stock.PROPERTIES, null, null,
-		  N_("Show the properties of this keyring"), on_properties_place },
-		{ "app-preferences", Gtk.Stock.PREFERENCES, N_("Prefere_nces"), null,
-		  N_("Change preferences for this program"), on_app_preferences },
-		{ "view-menu", null, N_("_View") },
-		{ "help-menu", null, N_("_Help") },
-		{ "app-about", Gtk.Stock.ABOUT, null, null,
-		  N_("About this program"), on_app_about },
-		{ "help-show", Gtk.Stock.HELP, N_("_Contents"), "F1",
-		  N_("Show Seahorse help"), on_help_show }
+	private static const GLib.ActionEntry[] COMMON_ENTRIES = {
+		{ "file-export", on_key_export_file, null, null, null },
+		{ "edit-export-clipboard", on_key_export_clipboard, null, null, null },
+		{ "edit-delete", on_object_delete, null, null, null },
+		{ "properties-object", on_properties_object, null, null, null },
+		{ "properties-keyring", on_properties_place, null, null, null },
+		{ "preferences", on_preferences, null, null, null },
+		{ "about", on_about, null, null, null },
+		{ "help-show", on_help_show, null, null, null }
 	};
-
-
 }
 
 }

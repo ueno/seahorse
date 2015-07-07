@@ -309,7 +309,7 @@ void
 seahorse_gpgme_key_realize (SeahorseGpgmeKey *self)
 {
 	SeahorseUsage usage;
-	GtkActionGroup *actions;
+	GActionGroup *actions;
 	guint flags;
 
 	if (!self->pv->pubkey)

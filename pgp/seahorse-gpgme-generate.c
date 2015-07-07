@@ -62,6 +62,39 @@ void           on_gpgme_generate_expires_toggled             (GtkToggleButton *b
 void           on_gpgme_generate_algorithm_changed           (GtkComboBox *combo,
                                                               gpointer user_data);
 
+enum {
+	PROP_0,
+	PROP_NAME,
+	PROP_ACTIONS,
+	PROP_MENU
+};
+
+#define SEAHORSE_TYPE_GPGME_GENERATOR (seahorse_gpgme_generator_get_type ())
+
+G_DECLARE_FINAL_TYPE (SeahorseGpgmeGenerator, seahorse_gpgme_generator,
+		      SEAHORSE, GPGME_GENERATOR, GObject);
+
+struct _SeahorseGpgmeGenerator {
+	GObject parent;
+	GActionGroup *actions;
+	GMenuModel *menu;
+};
+
+struct _SeahorseGpgmeGeneratorClass {
+	GObjectClass parent_class;
+};
+
+static void seahorse_gpgme_generator_iface (SeahorseGeneratorIface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (SeahorseGpgmeGenerator, seahorse_gpgme_generator, G_TYPE_OBJECT,
+                         G_IMPLEMENT_INTERFACE (SEAHORSE_TYPE_GENERATOR, seahorse_gpgme_generator_iface);
+);
+
+static void
+seahorse_gpgme_generator_init (SeahorseGpgmeGenerator *self)
+{
+}
+
 /* --------------------------------------------------------------------------
  * ACTIONS
  */
@@ -75,24 +108,127 @@ void           on_gpgme_generate_algorithm_changed           (GtkComboBox *combo
  *
  */
 static void
-on_pgp_generate_key (GtkAction *action, gpointer unused)
+on_pgp_generate_key (GSimpleAction *action, GVariant *parameter, gpointer unused)
 {
 	SeahorseGpgmeKeyring* keyring;
 
-	g_return_if_fail (GTK_IS_ACTION (action));
+	g_return_if_fail (G_IS_SIMPLE_ACTION (action));
 
 	keyring = seahorse_pgp_backend_get_default_keyring (NULL);
 	g_return_if_fail (keyring != NULL);
 
 	seahorse_gpgme_generate_show (keyring,
-	                              seahorse_action_get_window (action),
+	                              seahorse_action_get_window (G_ACTION (action)),
 	                              NULL, NULL, NULL);
 }
 
-static const GtkActionEntry ACTION_ENTRIES[] = {
-	{ "pgp-generate-key", GCR_ICON_KEY_PAIR, N_ ("PGP Key"), "",
-	  N_("Used to encrypt email and files"), G_CALLBACK (on_pgp_generate_key) }
+static const GActionEntry ACTION_ENTRIES[] = {
+	{ "pgp-generate-key", on_pgp_generate_key, NULL, NULL, NULL }
 };
+
+static void
+seahorse_gpgme_generator_constructed (GObject *obj)
+{
+	SeahorseGpgmeGenerator *self = SEAHORSE_GPGME_GENERATOR (obj);
+	GMenuItem *item;
+	GIcon *icon;
+
+	G_OBJECT_CLASS (seahorse_gpgme_generator_parent_class)->constructed (obj);
+
+	self->actions = G_ACTION_GROUP (g_simple_action_group_new ());
+	g_action_map_add_action_entries (G_ACTION_MAP (self->actions),
+					 ACTION_ENTRIES,
+					 G_N_ELEMENTS (ACTION_ENTRIES),
+					 self);
+
+	self->menu = G_MENU_MODEL (g_menu_new ());
+	item = g_menu_item_new (_("PGP Key"),
+				SEAHORSE_PGP_NAME ".pgp-generate-key");
+	icon = g_themed_icon_new (GCR_ICON_KEY_PAIR);
+	g_menu_item_set_icon (item, icon);
+	g_object_unref (icon);
+	g_menu_item_set_attribute (item, "tooltip", "s",
+				   _("Used to encrypt email and files"));
+	g_menu_append_item (G_MENU (self->menu), item);
+	g_object_unref (item);
+}
+
+static const gchar *
+seahorse_gpgme_generator_get_name (SeahorseGenerator *generator)
+{
+	return SEAHORSE_PGP_NAME;
+}
+
+static GActionGroup *
+seahorse_gpgme_generator_get_actions (SeahorseGenerator *generator)
+{
+	SeahorseGpgmeGenerator *self = SEAHORSE_GPGME_GENERATOR (generator);
+	return g_object_ref (self->actions);
+}
+
+static GMenuModel *
+seahorse_gpgme_generator_get_menu (SeahorseGenerator *generator)
+{
+	SeahorseGpgmeGenerator *self = SEAHORSE_GPGME_GENERATOR (generator);
+	return g_object_ref (self->menu);
+}
+
+static void
+seahorse_gpgme_generator_get_property (GObject *obj,
+				       guint prop_id,
+				       GValue *value,
+				       GParamSpec *pspec)
+{
+	SeahorseGenerator *generator = SEAHORSE_GENERATOR (obj);
+
+	switch (prop_id) {
+	case PROP_NAME:
+		g_value_set_string (value, seahorse_gpgme_generator_get_name (generator));
+		break;
+	case PROP_ACTIONS:
+		g_value_take_object (value, seahorse_gpgme_generator_get_actions (generator));
+		break;
+	case PROP_MENU:
+		g_value_take_object (value, seahorse_gpgme_generator_get_menu (generator));
+		break;
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (obj, prop_id, pspec);
+		break;
+	}
+}
+
+static void
+seahorse_gpgme_generator_finalize (GObject *obj)
+{
+	SeahorseGpgmeGenerator *self = SEAHORSE_GPGME_GENERATOR (obj);
+
+	g_clear_object (&self->actions);
+	g_clear_object (&self->menu);
+
+	G_OBJECT_CLASS (seahorse_gpgme_generator_parent_class)->finalize (obj);
+}
+
+static void
+seahorse_gpgme_generator_class_init (SeahorseGpgmeGeneratorClass *klass)
+{
+	GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+
+	gobject_class->constructed = seahorse_gpgme_generator_constructed;
+	gobject_class->get_property = seahorse_gpgme_generator_get_property;
+	gobject_class->finalize = seahorse_gpgme_generator_finalize;
+
+	g_object_class_override_property (gobject_class, PROP_NAME, "name");
+	g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
+	g_object_class_override_property (gobject_class, PROP_MENU, "menu");
+}
+
+static void
+seahorse_gpgme_generator_iface (SeahorseGeneratorIface *iface)
+{
+	iface->get_actions = seahorse_gpgme_generator_get_actions;
+	iface->get_menu = seahorse_gpgme_generator_get_menu;
+	iface->get_name = seahorse_gpgme_generator_get_name;
+}
 
 /**
  * seahorse_gpgme_generate_register:
@@ -103,15 +239,9 @@ static const GtkActionEntry ACTION_ENTRIES[] = {
 void
 seahorse_gpgme_generate_register (void)
 {
-	GtkActionGroup *actions;
-	
-	actions = gtk_action_group_new ("gpgme-generate");
-
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, ACTION_ENTRIES, G_N_ELEMENTS (ACTION_ENTRIES), NULL);
-	
-	/* Register this as a generator */
-	seahorse_registry_register_object (G_OBJECT (actions), "generator");
+	SeahorseGpgmeGenerator *generator = g_object_new (SEAHORSE_TYPE_GPGME_GENERATOR, NULL);
+	seahorse_generator_register (SEAHORSE_GENERATOR (generator));
+	g_object_unref (generator);
 }
 
 /* --------------------------------------------------------------------------

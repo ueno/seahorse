@@ -44,12 +44,14 @@
 
 enum {
     PROP_0,
+    PROP_NAME,
     PROP_LABEL,
     PROP_DESCRIPTION,
     PROP_ICON,
     PROP_KEY_SERVER,
     PROP_URI,
-    PROP_ACTIONS
+    PROP_ACTIONS,
+    PROP_MENU
 };
 
 /* -----------------------------------------------------------------------------
@@ -95,6 +97,8 @@ seahorse_server_source_class_init (SeahorseServerSourceClass *klass)
     gobject_class->get_property = seahorse_server_get_property;
 
     /* These properties are used to conform to SeahorseSource, but are not actually used */
+    g_object_class_install_property (gobject_class, PROP_NAME,
+            g_param_spec_string ("name", "Name", "Name", "", G_PARAM_READABLE));
     g_object_class_install_property (gobject_class, PROP_LABEL,
             g_param_spec_string ("label", "Label", "Label", "", G_PARAM_READABLE));
     g_object_class_install_property (gobject_class, PROP_DESCRIPTION,
@@ -103,7 +107,10 @@ seahorse_server_source_class_init (SeahorseServerSourceClass *klass)
             g_param_spec_object ("icon", "icon", "Icon", G_TYPE_ICON, G_PARAM_READABLE));
     g_object_class_install_property (gobject_class, PROP_ACTIONS,
             g_param_spec_object ("actions", "actions", "Actions",
-                                 GTK_TYPE_ACTION_GROUP, G_PARAM_READABLE));
+                                 G_TYPE_ACTION_GROUP, G_PARAM_READABLE));
+    g_object_class_install_property (gobject_class, PROP_MENU,
+            g_param_spec_object ("menu", "menu", "Menu",
+                                 G_TYPE_MENU_MODEL, G_PARAM_READABLE));
 
     g_object_class_install_property (gobject_class, PROP_KEY_SERVER,
             g_param_spec_string ("key-server", "Key Server",
@@ -169,6 +176,12 @@ seahorse_server_source_load_finish (SeahorsePlace *self,
 }
 
 static gchar *
+seahorse_server_source_get_name (SeahorsePlace* self)
+{
+	return g_strdup (SEAHORSE_SERVER_SOURCE (self)->priv->server);
+}
+
+static gchar *
 seahorse_server_source_get_label (SeahorsePlace* self)
 {
 	return g_strdup (SEAHORSE_SERVER_SOURCE (self)->priv->server);
@@ -192,8 +205,14 @@ seahorse_server_source_get_icon (SeahorsePlace* self)
 	return g_themed_icon_new (GTK_STOCK_DIALOG_QUESTION);
 }
 
-static GtkActionGroup *
+static GActionGroup *
 seahorse_server_source_get_actions (SeahorsePlace* self)
+{
+	return NULL;
+}
+
+static GMenuModel *
+seahorse_server_source_get_menu (SeahorsePlace* self)
 {
 	return NULL;
 }
@@ -207,6 +226,8 @@ seahorse_server_source_place_iface (SeahorsePlaceIface *iface)
 	iface->get_description = seahorse_server_source_get_description;
 	iface->get_icon = seahorse_server_source_get_icon;
 	iface->get_label = seahorse_server_source_get_label;
+	iface->get_menu = seahorse_server_source_get_menu;
+	iface->get_name = seahorse_server_source_get_name;
 	iface->get_uri = seahorse_server_source_get_uri;
 }
 
@@ -262,6 +283,9 @@ seahorse_server_get_property (GObject *obj,
 	SeahorsePlace *place = SEAHORSE_PLACE (self);
 
 	switch (prop_id) {
+	case PROP_NAME:
+		g_value_take_string (value, seahorse_server_source_get_name (place));
+		break;
 	case PROP_LABEL:
 		g_value_take_string (value, seahorse_server_source_get_label (place));
 		break;
@@ -279,6 +303,9 @@ seahorse_server_get_property (GObject *obj,
 		break;
 	case PROP_ACTIONS:
 		g_value_set_object (value, seahorse_server_source_get_actions (place));
+		break;
+	case PROP_MENU:
+		g_value_set_object (value, seahorse_server_source_get_menu (place));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (obj, prop_id, pspec);

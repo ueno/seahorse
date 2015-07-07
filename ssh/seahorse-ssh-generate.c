@@ -37,34 +37,165 @@
 #include "libseahorse/seahorse-widget.h"
 
 
+enum {
+	PROP_0,
+	PROP_NAME,
+	PROP_ACTIONS,
+	PROP_MENU
+};
+
+#define SEAHORSE_TYPE_SSH_GENERATOR (seahorse_ssh_generator_get_type ())
+
+G_DECLARE_FINAL_TYPE (SeahorseSshGenerator, seahorse_ssh_generator,
+		      SEAHORSE, SSH_GENERATOR, GObject);
+
+struct _SeahorseSshGenerator {
+	GObject parent;
+	GActionGroup *actions;
+	GMenuModel *menu;
+};
+
+struct _SeahorseSshGeneratorClass {
+	GObjectClass parent_class;
+};
+
+static void seahorse_ssh_generator_iface (SeahorseGeneratorIface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (SeahorseSshGenerator, seahorse_ssh_generator, G_TYPE_OBJECT,
+                         G_IMPLEMENT_INTERFACE (SEAHORSE_TYPE_GENERATOR, seahorse_ssh_generator_iface);
+);
+
+static void
+seahorse_ssh_generator_init (SeahorseSshGenerator *self)
+{
+}
+
 /* --------------------------------------------------------------------------
  * ACTIONS
  */
 
 static void
-on_ssh_generate_key (GtkAction *action, gpointer unused)
+on_ssh_generate_key (GSimpleAction *action, GVariant *parameter,
+		     gpointer unused)
 {
 	seahorse_ssh_generate_show (seahorse_ssh_backend_get_dot_ssh (NULL),
-	                            seahorse_action_get_window (action));
+	                            seahorse_action_get_window (G_ACTION (action)));
 }
 
-static const GtkActionEntry ACTION_ENTRIES[] = {
-	{ "ssh-generate-key", GCR_ICON_KEY_PAIR, N_ ("Secure Shell Key"), "",
-	  N_("Used to access other computers (eg: via a terminal)"), G_CALLBACK (on_ssh_generate_key) }
+static const GActionEntry ACTION_ENTRIES[] = {
+	{ "ssh-generate-key", on_ssh_generate_key, NULL, NULL, NULL }
 };
+
+static void
+seahorse_ssh_generator_constructed (GObject *obj)
+{
+	SeahorseSshGenerator *self = SEAHORSE_SSH_GENERATOR (obj);
+	GMenuItem *item;
+	GIcon *icon;
+
+	G_OBJECT_CLASS (seahorse_ssh_generator_parent_class)->constructed (obj);
+
+	self->actions = G_ACTION_GROUP (g_simple_action_group_new ());
+	g_action_map_add_action_entries (G_ACTION_MAP (self->actions),
+					 ACTION_ENTRIES,
+					 G_N_ELEMENTS (ACTION_ENTRIES),
+					 self);
+
+	self->menu = G_MENU_MODEL (g_menu_new ());
+	item = g_menu_item_new (_("Secure Shell Key"),
+				SEAHORSE_SSH_NAME ".ssh-generate-key");
+	icon = g_themed_icon_new (GCR_ICON_KEY_PAIR);
+	g_menu_item_set_icon (item, icon);
+	g_object_unref (icon);
+	g_menu_item_set_attribute (item, "tooltip", "s",
+				   N_("Used to access other computers (eg: via a terminal)"));
+	g_menu_append_item (G_MENU (self->menu), item);
+	g_object_unref (item);
+}
+
+static const gchar *
+seahorse_ssh_generator_get_name (SeahorseGenerator *generator)
+{
+	return SEAHORSE_SSH_NAME;
+}
+
+static GActionGroup *
+seahorse_ssh_generator_get_actions (SeahorseGenerator *generator)
+{
+	SeahorseSshGenerator *self = SEAHORSE_SSH_GENERATOR (generator);
+	return g_object_ref (self->actions);
+}
+
+static GMenuModel *
+seahorse_ssh_generator_get_menu (SeahorseGenerator *generator)
+{
+	SeahorseSshGenerator *self = SEAHORSE_SSH_GENERATOR (generator);
+	return g_object_ref (self->menu);
+}
+
+static void
+seahorse_ssh_generator_get_property (GObject *obj,
+				       guint prop_id,
+				       GValue *value,
+				       GParamSpec *pspec)
+{
+	SeahorseGenerator *generator = SEAHORSE_GENERATOR (obj);
+
+	switch (prop_id) {
+	case PROP_NAME:
+		g_value_set_string (value, seahorse_ssh_generator_get_name (generator));
+		break;
+	case PROP_ACTIONS:
+		g_value_take_object (value, seahorse_ssh_generator_get_actions (generator));
+		break;
+	case PROP_MENU:
+		g_value_take_object (value, seahorse_ssh_generator_get_menu (generator));
+		break;
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (obj, prop_id, pspec);
+		break;
+	}
+}
+
+static void
+seahorse_ssh_generator_finalize (GObject *obj)
+{
+	SeahorseSshGenerator *self = SEAHORSE_SSH_GENERATOR (obj);
+
+	g_clear_object (&self->actions);
+	g_clear_object (&self->menu);
+
+	G_OBJECT_CLASS (seahorse_ssh_generator_parent_class)->finalize (obj);
+}
+
+static void
+seahorse_ssh_generator_class_init (SeahorseSshGeneratorClass *klass)
+{
+	GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+
+	gobject_class->constructed = seahorse_ssh_generator_constructed;
+	gobject_class->get_property = seahorse_ssh_generator_get_property;
+	gobject_class->finalize = seahorse_ssh_generator_finalize;
+
+	g_object_class_override_property (gobject_class, PROP_NAME, "name");
+	g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
+	g_object_class_override_property (gobject_class, PROP_MENU, "menu");
+}
+
+static void
+seahorse_ssh_generator_iface (SeahorseGeneratorIface *iface)
+{
+	iface->get_actions = seahorse_ssh_generator_get_actions;
+	iface->get_menu = seahorse_ssh_generator_get_menu;
+	iface->get_name = seahorse_ssh_generator_get_name;
+}
 
 void
 seahorse_ssh_generate_register (void)
 {
-	GtkActionGroup *actions;
-	
-	actions = gtk_action_group_new ("ssh-generate");
-
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, ACTION_ENTRIES, G_N_ELEMENTS (ACTION_ENTRIES), NULL);
-	
-	/* Register this as a generator */
-	seahorse_registry_register_object (G_OBJECT (actions), "generator");
+	SeahorseSshGenerator *generator = g_object_new (SEAHORSE_TYPE_SSH_GENERATOR, NULL);
+	seahorse_generator_register (SEAHORSE_GENERATOR (generator));
+	g_object_unref (generator);
 }
 
 /* --------------------------------------------------------------------

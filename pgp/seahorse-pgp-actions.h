@@ -24,8 +24,8 @@
 
 #include <gtk/gtk.h>
 
-GtkActionGroup *      seahorse_pgp_backend_actions_instance    (void);
+GActionGroup *      seahorse_pgp_backend_actions_instance    (void);
 
-GtkActionGroup *      seahorse_gpgme_key_actions_instance      (void);
+GActionGroup *      seahorse_gpgme_key_actions_instance      (void);
 
 #endif

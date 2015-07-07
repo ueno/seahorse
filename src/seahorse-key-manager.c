@@ -41,8 +41,7 @@ enum {
 };
 
 struct _SeahorseKeyManagerPrivate {
-	GtkActionGroup* view_actions;
-	GtkRadioAction *show_action;
+	GSimpleAction *show_action;
 	GtkEntry* filter_entry;
 	SeahorsePredicate pred;
 	SeahorseSidebar *sidebar;
@@ -110,9 +109,8 @@ on_keymanager_key_list_button_pressed (GtkTreeView* view, GdkEventButton* event,
 	g_return_val_if_fail (GTK_IS_TREE_VIEW (view), FALSE);
 	
 	if (event->button == 3)
-		seahorse_catalog_show_context_menu (SEAHORSE_CATALOG (self),
-		                                   SEAHORSE_CATALOG_MENU_OBJECT,
-		                                   event->button, event->time);
+		seahorse_catalog_show_object_menu (SEAHORSE_CATALOG (self),
+						   event->button, event->time);
 
 	return FALSE;
 }
@@ -124,18 +122,18 @@ on_keymanager_key_list_popup_menu (GtkTreeView* view, SeahorseKeyManager* self)
 
 	objects = seahorse_catalog_get_selected_objects (SEAHORSE_CATALOG (self));
 	if (objects != NULL)
-		seahorse_catalog_show_context_menu (SEAHORSE_CATALOG (self),
-		                                   SEAHORSE_CATALOG_MENU_OBJECT,
+		seahorse_catalog_show_object_menu (SEAHORSE_CATALOG (self),
 		                                   0, gtk_get_current_event_time ());
 	g_list_free (objects);
 	return FALSE;
 }
 
 static void 
-on_file_new (GtkAction* action, SeahorseKeyManager* self) 
+on_file_new (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
 	g_return_if_fail (SEAHORSE_IS_KEY_MANAGER (self));
-	g_return_if_fail (GTK_IS_ACTION (action));
+	g_return_if_fail (G_IS_SIMPLE_ACTION (action));
 	seahorse_generate_select_show (seahorse_catalog_get_window (SEAHORSE_CATALOG (self)));
 }
 
@@ -304,10 +302,11 @@ import_prompt (SeahorseKeyManager* self)
 }
 
 static void 
-on_key_import_file (GtkAction* action, SeahorseKeyManager* self) 
+on_key_import_file (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
 	g_return_if_fail (SEAHORSE_IS_KEY_MANAGER (self));
-	g_return_if_fail (GTK_IS_ACTION (action));
+	g_return_if_fail (G_IS_SIMPLE_ACTION (action));
 	import_prompt (self);
 }
 
@@ -364,14 +363,15 @@ on_target_drag_data_received (GtkWindow* window, GdkDragContext* context, gint x
 }
 
 static void
-update_clipboard_state (GtkClipboard* clipboard, GdkEvent* event, GtkActionGroup* group)
+update_clipboard_state (GtkClipboard* clipboard, GdkEvent* event, GActionGroup *group)
 {
-	GtkAction *action;
+	GAction *action;
 	gboolean text_available;
 
 	text_available = gtk_clipboard_wait_is_text_available (clipboard);
-	action = gtk_action_group_get_action (group, "edit-import-clipboard");
-	gtk_action_set_sensitive (action, text_available);
+	action = g_action_map_lookup_action (G_ACTION_MAP (group),
+					     "edit-import-clipboard");
+	g_simple_action_set_enabled (G_SIMPLE_ACTION (action), text_available);
 }
 
 static void 
@@ -392,13 +392,15 @@ on_clipboard_received (GtkClipboard* board, const char* text, SeahorseKeyManager
 }
 
 static void 
-on_key_import_clipboard (GtkAction* action, SeahorseKeyManager* self) 
+on_key_import_clipboard (GSimpleAction *action, GVariant *parameter,
+			 gpointer user_data)
 {
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
 	GdkAtom atom;
 	GtkClipboard* board;
 
 	g_return_if_fail (SEAHORSE_IS_KEY_MANAGER (self));
-	g_return_if_fail (GTK_IS_ACTION (action));
+	g_return_if_fail (G_IS_SIMPLE_ACTION (action));
 
 	atom = gdk_atom_intern ("CLIPBOARD", FALSE);
 	board = gtk_clipboard_get (atom);
@@ -406,49 +408,55 @@ on_key_import_clipboard (GtkAction* action, SeahorseKeyManager* self)
 }
 
 static void 
-on_app_quit (GtkAction* action,
-             SeahorseKeyManager* self)
+on_app_quit (GSimpleAction *action, GVariant *parameter,
+             gpointer user_data)
 {
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
 	g_return_if_fail (SEAHORSE_IS_KEY_MANAGER (self));
-	g_return_if_fail (GTK_IS_ACTION (action));
+	g_return_if_fail (G_IS_SIMPLE_ACTION (action));
 	g_application_quit (G_APPLICATION (seahorse_application_get ()));
 }
 
-static const gchar *
+static void
+on_view_sidebar_changed (GSimpleAction *action,
+			 GVariant *state,
+			 gpointer user_data)
+{
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
+	g_settings_set_boolean (self->pv->settings, "sidebar-visible",
+				g_variant_get_boolean (state));
+	g_simple_action_set_state (action, state);
+}
+
+static void
 update_view_filter (SeahorseKeyManager *self)
 {
-	const gchar *value = "";
-	gint radio;
+	GVariant *state;
+	const gchar *value;
 
-	radio = gtk_radio_action_get_current_value (self->pv->show_action);
-	switch (radio) {
-	case SHOW_PERSONAL:
+	state = g_action_get_state (G_ACTION (self->pv->show_action));
+	value = g_variant_get_string (state, NULL);
+	if (strcmp (value, "personal") == 0)
 		self->pv->pred.flags = SEAHORSE_FLAG_PERSONAL;
-		value = "personal";
-		break;
-	case SHOW_TRUSTED:
+	else if (strcmp (value, "trusted") == 0)
 		self->pv->pred.flags = SEAHORSE_FLAG_TRUSTED;
-		value = "trusted";
-		break;
-	case SHOW_ANY:
+	else
 		self->pv->pred.flags = 0;
-		value = "";
-		break;
-	}
 
 	seahorse_key_manager_store_refilter (self->pv->store);
-	return value;
 }
 
 
 static void
-on_view_show_changed (GtkRadioAction *action,
-                      GtkRadioAction *current,
+on_view_show_changed (GSimpleAction *action,
+		      GVariant *state,
                       gpointer user_data)
 {
 	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
-	const gchar *value = update_view_filter (self);
-	g_settings_set_string (self->pv->settings, "item-filter", value);
+	g_settings_set_string (self->pv->settings, "item-filter",
+			       g_variant_get_string (state, NULL));
+	g_simple_action_set_state (action, state);
+	update_view_filter (self);
 }
 
 static void
@@ -458,72 +466,28 @@ on_item_filter_changed (GSettings *settings,
 {
 	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
 	gchar *value;
-	gint radio;
 
 	value = g_settings_get_string (settings, key);
-	if (value == NULL || g_str_equal (value, ""))
-		radio = SHOW_ANY;
-	else if (g_str_equal (value, "personal"))
-		radio = SHOW_PERSONAL;
-	else if (g_str_equal (value, "trusted"))
-		radio = SHOW_TRUSTED;
-	else
-		radio = -1;
-	gtk_radio_action_set_current_value (self->pv->show_action, radio);
+	if (!(g_str_equal (value, "any") ||
+	      g_str_equal (value, "personal") ||
+	      g_str_equal (value, "trusted"))) {
+		g_free (value);
+		value = g_strdup ("any");
+	}
+
+	g_simple_action_set_state (self->pv->show_action,
+				   g_variant_new_take_string (value));
 	update_view_filter (self);
-	g_free (value);
 }
 
-#define       SEAHORSE_TYPE_MENU_ACTION          (seahorse_menu_action_get_type ())
-
-GType         seahorse_menu_action_get_type      (void) G_GNUC_CONST;
-
-typedef       GtkAction                          SeahorseMenuAction;
-
-typedef       GtkActionClass                     SeahorseMenuActionClass;
-
-G_DEFINE_TYPE (SeahorseMenuAction, seahorse_menu_action, GTK_TYPE_ACTION);
-
-static void
-seahorse_menu_action_init (SeahorseMenuAction *self)
-{
-
-}
-
-static void
-seahorse_menu_action_class_init (SeahorseMenuActionClass *klass)
-{
-	GTK_ACTION_CLASS (klass)->toolbar_item_type = GTK_TYPE_MENU_TOOL_BUTTON;
-}
-
-static const GtkActionEntry GENERAL_ACTIONS[] = {
-	/* TRANSLATORS: The "Remote" menu contains key operations on remote systems. */
-	{ "remote-menu", NULL, N_("_Remote") }, 
-	{ "new-menu", NULL, N_("_New") },
-	{ "app-quit", GTK_STOCK_QUIT, NULL, "<control>Q", 
-	  N_("Close this program"), G_CALLBACK (on_app_quit) }, 
-	{ "file-new", GTK_STOCK_NEW, N_("_New..."), "<control>N", 
-	  N_("Create a new key or item"), G_CALLBACK (on_file_new) },
-	{ "new-object", GTK_STOCK_ADD, N_("_New..."), NULL,
-	  N_("Add a new key or item"), G_CALLBACK (on_file_new) },
-	{ "file-import", GTK_STOCK_OPEN, N_("_Import..."), "<control>I", 
-	  N_("Import from a file"), G_CALLBACK (on_key_import_file) }, 
-	{ "edit-import-clipboard", GTK_STOCK_PASTE, NULL, "<control>V", 
-	  N_("Import from the clipboard"), G_CALLBACK (on_key_import_clipboard) }
-};
-
-static const GtkToggleActionEntry SIDEBAR_ACTIONS[] = {
-	{ "view-sidebar", NULL, N_("By _Keyring"), NULL,
-	  N_("Show sidebar listing keyrings"), NULL, FALSE },
-};
-
-static const GtkRadioActionEntry VIEW_RADIO_ACTIONS[] = {
-	{ "view-personal", NULL, N_("Show _Personal"), NULL,
-	  N_("Only show personal keys, certificates and passwords"), SHOW_PERSONAL },
-	{ "view-trusted", NULL, N_("Show _Trusted"), NULL,
-	  N_("Only show trusted keys, certificates and passwords"), SHOW_TRUSTED },
-	{ "view-any", NULL, N_("Show _Any"), NULL,
-	  N_("Show all keys, certificates and passwords"), SHOW_ANY },
+static const GActionEntry GENERAL_ACTIONS[] = {
+	{ "quit", on_app_quit, NULL, NULL, NULL },
+	{ "file-new", on_file_new, NULL, NULL, NULL },
+	{ "new-object", on_file_new, NULL, NULL, NULL },
+	{ "file-import", on_key_import_file, NULL, NULL, NULL },
+	{ "edit-import-clipboard", on_key_import_clipboard, NULL, NULL, NULL },
+	{ "view-sidebar", NULL, NULL, "false", on_view_sidebar_changed },
+	{ "view-show", NULL, "s", "'personal'", on_view_show_changed }
 };
 
 static GList *
@@ -572,19 +536,18 @@ on_sidebar_popup_menu (SeahorseSidebar *sidebar,
                        gpointer user_data)
 {
 	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
-	const gchar *name;
 
-	name = G_OBJECT_TYPE_NAME (collection);
-	seahorse_catalog_show_context_menu (SEAHORSE_CATALOG (self), name,
-	                                   0, gtk_get_current_event_time ());
+	seahorse_catalog_show_collection_menu (SEAHORSE_CATALOG (self),
+					       collection,
+					       0,
+					       gtk_get_current_event_time ());
 }
 
 static GcrCollection *
 setup_sidebar (SeahorseKeyManager *self)
 {
 	GtkWidget *area, *panes;
-	GtkActionGroup *actions;
-	GtkAction *action;
+	GActionGroup *actions;
 	GList *backends, *l;
 	GtkBuilder *builder;
 
@@ -603,34 +566,36 @@ setup_sidebar (SeahorseKeyManager *self)
 
 	backends = seahorse_sidebar_get_backends (self->pv->sidebar);
 	for (l = backends; l != NULL; l = g_list_next (l)) {
+		gchar *name;
 		actions = NULL;
-		g_object_get (l->data, "actions", &actions, NULL);
+		g_object_get (l->data,
+			      "name", &name,
+			      "actions", &actions,
+			      NULL);
 		if (actions != NULL) {
-			seahorse_catalog_include_actions (SEAHORSE_CATALOG (self), actions);
+			g_object_set_data (G_OBJECT (actions),
+					   "seahorse-action-catalog",
+					   self);
+			gtk_widget_insert_action_group (GTK_WIDGET (self),
+							name,
+							actions);
 			g_object_unref (actions);
 		}
+		g_signal_emit_by_name (l->data,
+				       "included",
+				       SEAHORSE_CATALOG (self));
+		g_free (name);
 	}
 
 	area = GTK_WIDGET (gtk_builder_get_object (builder, "sidebar-area"));
 	gtk_container_add (GTK_CONTAINER (area), GTK_WIDGET (self->pv->sidebar));
 	gtk_widget_show (GTK_WIDGET (self->pv->sidebar));
-
-	actions = gtk_action_group_new ("sidebar");
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_toggle_actions (actions, SIDEBAR_ACTIONS,
-	                                     G_N_ELEMENTS (SIDEBAR_ACTIONS), self);
-	action = gtk_action_group_get_action (actions, "view-sidebar");
 	g_settings_bind (self->pv->settings, "sidebar-visible",
-	                 action, "active",
+	                 area, "visible",
 	                 G_SETTINGS_BIND_DEFAULT);
-	g_object_bind_property (action, "active",
-	                        area, "visible",
-	                        G_BINDING_SYNC_CREATE);
-	g_object_bind_property (action, "active",
-	                        self->pv->sidebar, "combined",
-	                        G_BINDING_INVERT_BOOLEAN | G_BINDING_SYNC_CREATE);
-	seahorse_catalog_include_actions (SEAHORSE_CATALOG (self), actions);
-	g_object_unref (actions);
+	g_settings_bind (self->pv->settings, "sidebar-visible",
+	                 self->pv->sidebar, "combined",
+	                 G_SETTINGS_BIND_INVERT_BOOLEAN);
 
 	g_settings_bind (self->pv->settings, "keyrings-selected",
 	                 self->pv->sidebar, "selected-uris",
@@ -643,14 +608,14 @@ static void
 seahorse_key_manager_constructed (GObject *object)
 {
 	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (object);
-	GtkActionGroup* actions;
+	GActionGroup* actions;
 	GtkTargetList* targets;
 	GtkTreeSelection *selection;
-	GtkWidget* widget;
-	GtkAction *action;
+	GAction *action;
 	GtkWindow *window;
 	GtkBuilder *builder;
 	GtkClipboard* clipboard;
+	GtkWidget *widget;
 
 	G_OBJECT_CLASS (seahorse_key_manager_parent_class)->constructed (object);
 
@@ -677,22 +642,20 @@ seahorse_key_manager_constructed (GObject *object)
 	                                                  &self->pv->pred,
 	                                                  self->pv->settings);
 
-
-	actions = gtk_action_group_new ("general");
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, GENERAL_ACTIONS, G_N_ELEMENTS (GENERAL_ACTIONS), self);
-	seahorse_catalog_include_actions (SEAHORSE_CATALOG (self), actions);
-
-	self->pv->view_actions = gtk_action_group_new ("view");
-	gtk_action_group_set_translation_domain (self->pv->view_actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_radio_actions (self->pv->view_actions, VIEW_RADIO_ACTIONS,
-	                                    G_N_ELEMENTS (VIEW_RADIO_ACTIONS), -1,
-	                                    G_CALLBACK (on_view_show_changed), self);
-	action = gtk_action_group_get_action (self->pv->view_actions, "view-personal");
-	seahorse_catalog_include_actions (SEAHORSE_CATALOG (self), self->pv->view_actions);
-	self->pv->show_action = GTK_RADIO_ACTION (action);
+	g_object_get (self, "actions", &actions, NULL);
+	g_action_map_add_action_entries (G_ACTION_MAP (actions),
+					 GENERAL_ACTIONS,
+					 G_N_ELEMENTS (GENERAL_ACTIONS),
+					 self);
+	gtk_widget_insert_action_group (GTK_WIDGET (self), "app", actions);
+	g_object_unref (actions);
 
 	/* Notify us when settings change */
+	action = g_action_map_lookup_action (G_ACTION_MAP (actions), "view-sidebar");
+	g_simple_action_set_state (G_SIMPLE_ACTION (action), g_variant_new_boolean (g_settings_get_boolean (self->pv->settings, "sidebar-visible")));
+
+	action = g_action_map_lookup_action (G_ACTION_MAP (actions), "view-show");
+	self->pv->show_action = G_SIMPLE_ACTION (action);
 	g_signal_connect_object (self->pv->settings, "changed::item-filter",
 	                         G_CALLBACK (on_item_filter_changed), self, 0);
 	on_item_filter_changed (self->pv->settings, "item-filter", self);
@@ -705,57 +668,23 @@ seahorse_key_manager_constructed (GObject *object)
 	                         "clicked", G_CALLBACK (on_keymanager_new_button), self, 0);
 
 	/* Make sure import is only available with clipboard content */
-	action = gtk_action_group_get_action (actions, "edit-import-clipboard");
 	clipboard = gtk_clipboard_get(GDK_SELECTION_PRIMARY);
 	g_signal_connect (clipboard, "owner-change", G_CALLBACK (update_clipboard_state), actions);
 	update_clipboard_state (clipboard, NULL, actions);
 
-	/* Flush all updates */
-	seahorse_catalog_ensure_updated (SEAHORSE_CATALOG (self));
-	
-	/* Find the toolbar */
-	widget = GTK_WIDGET (gtk_builder_get_object (builder, "toolbar-placeholder"));
-	if (widget != NULL) {
-		GList* children = gtk_container_get_children ((GTK_CONTAINER (widget)));
-		if (children != NULL && children->data != NULL) {
-			GtkToolbar* toolbar;
-
-			/* The toolbar is the first (and only) element */
-			toolbar = GTK_TOOLBAR (children->data);
-			if (toolbar != NULL && G_TYPE_FROM_INSTANCE (G_OBJECT (toolbar)) == GTK_TYPE_TOOLBAR) {
-				GtkSeparatorToolItem* sep;
-				GtkBox* box;
-				GtkToolItem* item;
-
-				gtk_style_context_add_class (gtk_widget_get_style_context (GTK_WIDGET (toolbar)),
-				                             GTK_STYLE_CLASS_PRIMARY_TOOLBAR);
-				gtk_widget_reset_style (GTK_WIDGET (toolbar));
-				
-				/* Insert a separator to right align the filter */
-				sep = GTK_SEPARATOR_TOOL_ITEM (gtk_separator_tool_item_new ());
-				gtk_separator_tool_item_set_draw (sep, FALSE);
-				gtk_tool_item_set_expand (GTK_TOOL_ITEM (sep), TRUE);
-				gtk_widget_show_all (GTK_WIDGET (sep));
-				gtk_toolbar_insert (toolbar, GTK_TOOL_ITEM (sep), -1);
-				
-				/* Insert a filter bar */
-				box = GTK_BOX (gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0));
-
-				self->pv->filter_entry = GTK_ENTRY (gtk_entry_new ());
-				gtk_entry_set_placeholder_text (self->pv->filter_entry, _("Filter"));
-				gtk_box_pack_start (box, GTK_WIDGET (self->pv->filter_entry), FALSE, TRUE, 0);
-
-				gtk_box_pack_start (box, gtk_label_new (NULL), FALSE, FALSE, 0);
-				gtk_widget_show_all (GTK_WIDGET (box));
-				
-				item = gtk_tool_item_new ();
-				gtk_container_add (GTK_CONTAINER (item), GTK_WIDGET (box));
-				gtk_widget_show_all (GTK_WIDGET (item));
-				gtk_toolbar_insert (toolbar, item, -1);
-			}
-		}
+	/* Find the menubar */
+	widget = GTK_WIDGET (gtk_builder_get_object (builder, "menu-placeholder"));
+	if (widget) {
+		GtkWidget *menubar = gtk_menu_bar_new_from_model (G_MENU_MODEL (gtk_builder_get_object (builder, "menubar")));
+		gtk_container_add (GTK_CONTAINER (widget), menubar);
+		gtk_widget_show_all (menubar);
 	}
 
+	/* Find the toolbar */
+	widget = GTK_WIDGET (gtk_builder_get_object (builder, "new-object-button"));
+	gtk_actionable_set_action_name (GTK_ACTIONABLE (widget), "app.new-object");
+	gtk_widget_set_tooltip_text (widget, _("Add a new key or item"));
+	self->pv->filter_entry = GTK_ENTRY (gtk_builder_get_object (builder, "filter-entry"));
 	on_filter_changed (self->pv->filter_entry, self);
 	gtk_entry_set_width_chars (self->pv->filter_entry, 30);
 	g_signal_connect (self->pv->filter_entry, "icon-release",
@@ -815,10 +744,6 @@ seahorse_key_manager_finalize (GObject *obj)
 		self->pv->sidebar_width_sig = 0;
 	}
 
-	if (self->pv->view_actions)
-		g_object_unref (self->pv->view_actions);
-	self->pv->view_actions = NULL;
-	
 	self->pv->filter_entry = NULL;
 
 	g_clear_object (&self->pv->settings);

@@ -20,7 +20,28 @@
           <object class="GtkVBox" id="toolbar-placeholder">
             <property name="visible">True</property>
             <child>
-              <placeholder/>
+              <object class="GtkToolbar" id="main-toolbar">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <child>
+                  <object class="GtkToolButton" id="key-import-keyring">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="use_underline">True</property>
+                    <property name="label" translatable="yes">_Import</property>
+                    <property name="icon_name">list-add</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkToolButton" id="properties-object">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="use_underline">True</property>
+                    <property name="label" translatable="yes">_Properties</property>
+                    <property name="icon_name">document-properties</property>
+                  </object>
+                </child>
+              </object>
             </child>
           </object>
           <packing>
@@ -84,4 +105,41 @@
           </packing>
         </child>
       </object>
+      <menu id="menubar">
+	<submenu id="file-menu">
+	  <attribute name="label">File</attribute>
+	  <item>
+	    <attribute name="label">_Import</attribute>
+	    <attribute name="action">key-import-keyring</attribute>
+	  </item>
+	  <item>
+	    <attribute name="label">Close</attribute>
+	    <attribute name="action">win.close</attribute>
+	  </item>
+	</submenu>
+	<submenu id="edit-menu">
+	  <attribute name="label">Edit</attribute>
+	</submenu>
+	<submenu id="remote-menu">
+	  <attribute name="label">_Remote</attribute>
+	  <item>
+	    <attribute name="label">_Find Remote Keys...</attribute>
+	    <attribute name="action">remote-find</attribute>
+	  </item>
+	</submenu>
+	<submenu id="help-menu">
+	  <attribute name="label">Help</attribute>
+	  <attribute name="action">app.help-show</attribute>
+	</submenu>
+      </menu>
+      <menu id="popup">
+	<item>
+	  <attribute name="label">_Import</attribute>
+	  <attribute name="action">key-import-keyring</attribute>
+	</item>
+	<item>
+	  <attribute name="label">Properties</attribute>
+	  <attribute name="action">properties-object</attribute>
+	</item>
+      </menu>
 </interface>

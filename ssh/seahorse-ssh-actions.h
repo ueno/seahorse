@@ -24,6 +24,6 @@
 
 #include <gtk/gtk.h>
 
-GtkActionGroup *       seahorse_ssh_actions_instance           (void);
+GActionGroup *       seahorse_ssh_actions_instance           (void);
 
 #endif

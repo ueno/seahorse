@@ -491,8 +491,41 @@ seahorse_pkcs11_generate_prompt (GtkWindow *parent)
 	g_object_unref (dialog);
 }
 
+enum {
+	PROP_0,
+	PROP_NAME,
+	PROP_ACTIONS,
+	PROP_MENU
+};
+
+#define SEAHORSE_TYPE_PKCS11_GENERATOR (seahorse_pkcs11_generator_get_type ())
+
+G_DECLARE_FINAL_TYPE (SeahorsePkcs11Generator, seahorse_pkcs11_generator,
+		      SEAHORSE, PKCS11_GENERATOR, GObject);
+
+struct _SeahorsePkcs11Generator {
+	GObject parent;
+	GActionGroup *actions;
+	GMenuModel *menu;
+};
+
+struct _SeahorsePkcs11GeneratorClass {
+	GObjectClass parent_class;
+};
+
+static void seahorse_pkcs11_generator_iface (SeahorseGeneratorIface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (SeahorsePkcs11Generator, seahorse_pkcs11_generator, G_TYPE_OBJECT,
+                         G_IMPLEMENT_INTERFACE (SEAHORSE_TYPE_GENERATOR, seahorse_pkcs11_generator_iface);
+);
+
 static void
-on_generate_activate (GtkAction *action,
+seahorse_pkcs11_generator_init (SeahorsePkcs11Generator *self)
+{
+}
+
+static void
+on_generate_activate (GSimpleAction *action, GVariant *parameter,
                       gpointer user_data)
 {
 	GtkWindow *parent;
@@ -501,18 +534,119 @@ on_generate_activate (GtkAction *action,
 	seahorse_pkcs11_generate_prompt (parent);
 }
 
-static const GtkActionEntry ACTION_ENTRIES[] = {
-	{ "pkcs11-generate-key", GCR_ICON_KEY_PAIR, N_ ("Private key"), "",
-	  N_("Used to request a certificate"), G_CALLBACK (on_generate_activate) }
+static const GActionEntry ACTION_ENTRIES[] = {
+	{ "pkcs11-generate-key", on_generate_activate, NULL, NULL, NULL }
 };
+
+
+static void
+seahorse_pkcs11_generator_constructed (GObject *obj)
+{
+	SeahorsePkcs11Generator *self = SEAHORSE_PKCS11_GENERATOR (obj);
+	GMenuItem *item;
+	GIcon *icon;
+
+	G_OBJECT_CLASS (seahorse_pkcs11_generator_parent_class)->constructed (obj);
+
+	self->actions = G_ACTION_GROUP (g_simple_action_group_new ());
+	g_action_map_add_action_entries (G_ACTION_MAP (self->actions),
+					 ACTION_ENTRIES,
+					 G_N_ELEMENTS (ACTION_ENTRIES),
+					 self);
+
+	self->menu = G_MENU_MODEL (g_menu_new ());
+	item = g_menu_item_new (_("Private key"),
+				SEAHORSE_PKCS11_NAME ".pkcs11-generate-key");
+	icon = g_themed_icon_new (GCR_ICON_KEY_PAIR);
+	g_menu_item_set_icon (item, icon);
+	g_object_unref (icon);
+	g_menu_item_set_attribute (item, "tooltip", "s",
+				   _("Used to request a certificate"));
+	g_menu_append_item (G_MENU (self->menu), item);
+	g_object_unref (item);
+}
+
+static const gchar *
+seahorse_pkcs11_generator_get_name (SeahorseGenerator *generator)
+{
+	return SEAHORSE_PKCS11_NAME;
+}
+
+static GActionGroup *
+seahorse_pkcs11_generator_get_actions (SeahorseGenerator *generator)
+{
+	SeahorsePkcs11Generator *self = SEAHORSE_PKCS11_GENERATOR (generator);
+	return g_object_ref (self->actions);
+}
+
+static GMenuModel *
+seahorse_pkcs11_generator_get_menu (SeahorseGenerator *generator)
+{
+	SeahorsePkcs11Generator *self = SEAHORSE_PKCS11_GENERATOR (generator);
+	return g_object_ref (self->menu);
+}
+
+static void
+seahorse_pkcs11_generator_get_property (GObject *obj,
+				       guint prop_id,
+				       GValue *value,
+				       GParamSpec *pspec)
+{
+	SeahorseGenerator *generator = SEAHORSE_GENERATOR (obj);
+
+	switch (prop_id) {
+	case PROP_NAME:
+		g_value_set_string (value, seahorse_pkcs11_generator_get_name (generator));
+		break;
+	case PROP_ACTIONS:
+		g_value_take_object (value, seahorse_pkcs11_generator_get_actions (generator));
+		break;
+	case PROP_MENU:
+		g_value_take_object (value, seahorse_pkcs11_generator_get_menu (generator));
+		break;
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (obj, prop_id, pspec);
+		break;
+	}
+}
+
+static void
+seahorse_pkcs11_generator_finalize (GObject *obj)
+{
+	SeahorsePkcs11Generator *self = SEAHORSE_PKCS11_GENERATOR (obj);
+
+	g_clear_object (&self->actions);
+	g_clear_object (&self->menu);
+
+	G_OBJECT_CLASS (seahorse_pkcs11_generator_parent_class)->finalize (obj);
+}
+
+static void
+seahorse_pkcs11_generator_class_init (SeahorsePkcs11GeneratorClass *klass)
+{
+	GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+
+	gobject_class->constructed = seahorse_pkcs11_generator_constructed;
+	gobject_class->get_property = seahorse_pkcs11_generator_get_property;
+	gobject_class->finalize = seahorse_pkcs11_generator_finalize;
+
+	g_object_class_override_property (gobject_class, PROP_NAME, "name");
+	g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
+	g_object_class_override_property (gobject_class, PROP_MENU, "menu");
+}
+
+static void
+seahorse_pkcs11_generator_iface (SeahorseGeneratorIface *iface)
+{
+	iface->get_actions = seahorse_pkcs11_generator_get_actions;
+	iface->get_menu = seahorse_pkcs11_generator_get_menu;
+	iface->get_name = seahorse_pkcs11_generator_get_name;
+}
 
 void
 seahorse_pkcs11_generate_register (void)
 {
-	GtkActionGroup *actions;
-
-	actions = gtk_action_group_new ("pkcs11-generate");
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, ACTION_ENTRIES, G_N_ELEMENTS (ACTION_ENTRIES), NULL);
-	seahorse_registry_register_object (G_OBJECT (actions), "generator");
+	SeahorsePkcs11Generator *generator = g_object_new (SEAHORSE_TYPE_PKCS11_GENERATOR, NULL);
+	seahorse_generator_register (SEAHORSE_GENERATOR (generator));
+	g_object_unref (generator);
 }

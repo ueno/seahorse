@@ -103,7 +103,7 @@ public class Item : Secret.Item, Deletable, Viewable {
 		get { return Usage.CREDENTIALS; }
 	}
 
-	public Gtk.ActionGroup? actions {
+	public GLib.ActionGroup? actions {
 		get { return null; }
 	}
 

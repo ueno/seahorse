@@ -31,6 +31,7 @@
 #include "seahorse-gpg-options.h"
 #include "seahorse-pgp-actions.h"
 #include "seahorse-pgp-key.h"
+#include "seahorse-pgp.h"
 
 #include "seahorse-common.h"
 
@@ -50,11 +51,13 @@
 
 enum {
 	PROP_0,
+	PROP_NAME,
 	PROP_LABEL,
 	PROP_DESCRIPTION,
 	PROP_ICON,
 	PROP_URI,
-	PROP_ACTIONS
+	PROP_ACTIONS,
+	PROP_MENU
 };
 
 /* Amount of keys to load in a batch */
@@ -127,7 +130,8 @@ struct _SeahorseGpgmeKeyringPrivate {
 	guint scheduled_refresh;                /* Source for refresh timeout */
 	GFileMonitor *monitor_handle;           /* For monitoring the .gnupg directory */
 	GList *orphan_secret;                   /* Orphan secret keys */
-	GtkActionGroup *actions;
+	GActionGroup *actions;
+	GMenuModel *menu;
 };
 
 static void     seahorse_gpgme_keyring_place_iface        (SeahorsePlaceIface *iface);
@@ -801,6 +805,12 @@ seahorse_gpgme_keyring_init (SeahorseGpgmeKeyring *self)
 }
 
 static gchar *
+seahorse_gpgme_keyring_get_name (SeahorsePlace *place)
+{
+	return g_strdup (SEAHORSE_PGP_NAME);
+}
+
+static gchar *
 seahorse_gpgme_keyring_get_label (SeahorsePlace *place)
 {
 	return g_strdup (_("GnuPG keys"));
@@ -818,12 +828,21 @@ seahorse_gpgme_keyring_get_icon (SeahorsePlace *place)
 	return g_themed_icon_new (GCR_ICON_GNUPG);
 }
 
-static GtkActionGroup *
+static GActionGroup *
 seahorse_gpgme_keyring_get_actions (SeahorsePlace *place)
 {
 	SeahorseGpgmeKeyring *self = SEAHORSE_GPGME_KEYRING (place);
 	if (self->pv->actions)
 		return g_object_ref (self->pv->actions);
+	return NULL;
+}
+
+static GMenuModel *
+seahorse_gpgme_keyring_get_menu (SeahorsePlace *place)
+{
+	SeahorseGpgmeKeyring *self = SEAHORSE_GPGME_KEYRING (place);
+	if (self->pv->menu)
+		return g_object_ref (self->pv->menu);
 	return NULL;
 }
 
@@ -842,6 +861,8 @@ seahorse_gpgme_keyring_get_property (GObject *obj,
 	SeahorsePlace *place = SEAHORSE_PLACE (obj);
 
 	switch (prop_id) {
+	case PROP_NAME:
+		g_value_take_string (value, seahorse_gpgme_keyring_get_name (place));
 	case PROP_LABEL:
 		g_value_take_string (value, seahorse_gpgme_keyring_get_label (place));
 		break;
@@ -857,6 +878,9 @@ seahorse_gpgme_keyring_get_property (GObject *obj,
 	case PROP_ACTIONS:
 		g_value_take_object (value, seahorse_gpgme_keyring_get_actions (place));
 		break;
+	case PROP_MENU:
+		g_value_take_object (value, seahorse_gpgme_keyring_get_menu (place));
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (obj, prop_id, pspec);
 		break;
@@ -869,8 +893,6 @@ seahorse_gpgme_keyring_dispose (GObject *object)
 	SeahorseGpgmeKeyring *self = SEAHORSE_GPGME_KEYRING (object);
 	GList *l;
 
-	if (self->pv->actions)
-		gtk_action_group_set_sensitive (self->pv->actions, TRUE);
 	g_hash_table_remove_all (self->pv->keys);
 
 	cancel_scheduled_refresh (self);
@@ -893,6 +915,7 @@ seahorse_gpgme_keyring_finalize (GObject *object)
 	SeahorseGpgmeKeyring *self = SEAHORSE_GPGME_KEYRING (object);
 
 	g_clear_object (&self->pv->actions);
+	g_clear_object (&self->pv->menu);
 	g_hash_table_destroy (self->pv->keys);
 
 	/* All monitoring and scheduling should be done */
@@ -921,11 +944,13 @@ seahorse_gpgme_keyring_class_init (SeahorseGpgmeKeyringClass *klass)
 
 	g_type_class_add_private (klass, sizeof (SeahorseGpgmeKeyringPrivate));
 
+	g_object_class_override_property (gobject_class, PROP_NAME, "name");
 	g_object_class_override_property (gobject_class, PROP_LABEL, "label");
 	g_object_class_override_property (gobject_class, PROP_DESCRIPTION, "description");
 	g_object_class_override_property (gobject_class, PROP_URI, "uri");
 	g_object_class_override_property (gobject_class, PROP_ICON, "icon");
 	g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
+	g_object_class_override_property (gobject_class, PROP_MENU, "menu");
 }
 
 static void
@@ -937,6 +962,8 @@ seahorse_gpgme_keyring_place_iface (SeahorsePlaceIface *iface)
 	iface->get_description = seahorse_gpgme_keyring_get_description;
 	iface->get_icon = seahorse_gpgme_keyring_get_icon;
 	iface->get_label = seahorse_gpgme_keyring_get_label;
+	iface->get_menu = seahorse_gpgme_keyring_get_menu;
+	iface->get_name = seahorse_gpgme_keyring_get_name;
 	iface->get_uri = seahorse_gpgme_keyring_get_uri;
 }
 

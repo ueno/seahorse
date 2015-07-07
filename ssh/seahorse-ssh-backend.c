@@ -34,7 +34,7 @@ enum {
 	PROP_LABEL,
 	PROP_DESCRIPTION,
 	PROP_ACTIONS,
-        PROP_LOADED,
+	PROP_LOADED
 };
 
 static SeahorseSshBackend *ssh_backend = NULL;
@@ -121,7 +121,7 @@ seahorse_ssh_backend_get_description (SeahorseBackend *backend)
 	return _("Keys used to connect securely to other computers");
 }
 
-static GtkActionGroup *
+static GActionGroup *
 seahorse_ssh_backend_get_actions (SeahorseBackend *backend)
 {
 	return NULL;

@@ -88,7 +88,7 @@ changed_key (SeahorseSSHKey *self)
 	const gchar *display = NULL;
 	gchar *identifier;
 	gchar *simple = NULL;
-	GtkActionGroup *actions;
+	GActionGroup *actions;
 	GIcon *icon;
 	gchar *filename;
 	gchar *markup;

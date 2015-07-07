@@ -45,7 +45,7 @@ struct _SeahorseKeyserverResultsPrivate {
 	SeahorsePredicate pred;
 	GtkTreeView *view;
 	GcrSimpleCollection *collection;
-	GtkActionGroup *import_actions;
+	GSimpleAction *import_action;
 	SeahorseKeyManagerStore *store;
 	GSettings *settings;
 };
@@ -66,8 +66,8 @@ fire_selection_changed (SeahorseKeyserverResults* self)
 
 	selection = gtk_tree_view_get_selection (self->pv->view);
 	rows = gtk_tree_selection_count_selected_rows (selection);
-	if (self->pv->import_actions)
-		gtk_action_group_set_sensitive (self->pv->import_actions, rows > 0);
+	if (self->pv->import_action)
+		g_simple_action_set_enabled (self->pv->import_action, rows > 0);
 	g_signal_emit_by_name (self, "selection-changed");
 	return FALSE;
 }
@@ -108,8 +108,7 @@ on_key_list_button_pressed (GtkTreeView* view, GdkEventButton* event, SeahorseKe
 	g_return_val_if_fail (SEAHORSE_IS_KEYSERVER_RESULTS (self), FALSE);
 	g_return_val_if_fail (GTK_IS_TREE_VIEW (view), FALSE);
 	if (event->button == 3)
-		seahorse_catalog_show_context_menu (SEAHORSE_CATALOG (self),
-		                                   SEAHORSE_CATALOG_MENU_OBJECT,
+		seahorse_catalog_show_object_menu (SEAHORSE_CATALOG (self),
 		                                   event->button, event->time);
 	return FALSE;
 }
@@ -124,8 +123,7 @@ on_key_list_popup_menu (GtkTreeView* view, SeahorseKeyserverResults* self)
 
 	objects = seahorse_catalog_get_selected_objects (SEAHORSE_CATALOG (self));
 	if (objects != NULL)
-		seahorse_catalog_show_context_menu (SEAHORSE_CATALOG (self),
-		                                   SEAHORSE_CATALOG_MENU_OBJECT,
+		seahorse_catalog_show_object_menu (SEAHORSE_CATALOG (self),
 		                                   0, gtk_get_current_event_time ());
 	g_list_free (objects);
 	return TRUE;
@@ -139,16 +137,18 @@ on_key_list_popup_menu (GtkTreeView* view, SeahorseKeyserverResults* self)
 *
 **/
 static void
-on_app_close (GtkAction* action, SeahorseKeyserverResults* self)
+on_app_close (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
+	SeahorseKeyserverResults *self = SEAHORSE_KEYSERVER_RESULTS (user_data);
 	g_return_if_fail (SEAHORSE_IS_KEYSERVER_RESULTS (self));
 	g_return_if_fail (action == NULL || GTK_IS_ACTION (action));
 	gtk_widget_destroy (GTK_WIDGET (self));
 }
 
 static void
-on_remote_find (GtkAction* action, SeahorseKeyserverResults* self)
+on_remote_find (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
+	SeahorseKeyserverResults* self = SEAHORSE_KEYSERVER_RESULTS (user_data);
 	g_return_if_fail (SEAHORSE_IS_KEYSERVER_RESULTS (self));
 	g_return_if_fail (GTK_IS_ACTION (action));
 	seahorse_keyserver_search_show (seahorse_catalog_get_window (SEAHORSE_CATALOG (self)));
@@ -186,8 +186,9 @@ objects_prune_non_exportable (GList *objects)
 }
 
 static void
-on_key_import_keyring (GtkAction* action, SeahorseCatalog* self)
+on_key_import_keyring (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
+	SeahorseCatalog* self = SEAHORSE_CATALOG (user_data);
 	GCancellable *cancellable;
 	SeahorsePgpBackend *backend;
 	SeahorseGpgmeKeyring *keyring;
@@ -228,25 +229,20 @@ on_delete_event (GtkWidget* widget, GdkEvent* event, SeahorseKeyserverResults* s
 {
 	g_return_val_if_fail (SEAHORSE_IS_KEYSERVER_RESULTS (self), FALSE);
 	g_return_val_if_fail (GTK_IS_WIDGET (widget), FALSE);
-	on_app_close (NULL, self);
+	on_app_close (NULL, NULL, self);
 	return TRUE;
 }
 
-static const GtkActionEntry GENERAL_ENTRIES[] = {
-	/* TRANSLATORS: The "Remote" menu contains key operations on remote systems. */
-	{ "remote-menu", NULL, N_("_Remote") },
-	{ "app-close", GTK_STOCK_CLOSE, NULL, "<control>W",
-	  N_("Close this window"), G_CALLBACK (on_app_close) },
+static const GActionEntry GENERAL_ENTRIES[] = {
+	{ "close", on_app_close, NULL, NULL, NULL }
 };
 
-static const GtkActionEntry SERVER_ENTRIES[] = {
-	{ "remote-find", GTK_STOCK_FIND, N_("_Find Remote Keys..."), "",
-	  N_("Search for keys on a key server"), G_CALLBACK (on_remote_find) }
+static const GActionEntry SERVER_ENTRIES[] = {
+	{ "remote-find", on_remote_find, NULL, NULL, NULL }
 };
 
-static const GtkActionEntry IMPORT_ENTRIES[] = {
-	{ "key-import-keyring", GTK_STOCK_ADD, N_("_Import"), "",
-	  N_("Import selected keys to local key ring"), G_CALLBACK (on_key_import_keyring) }
+static const GActionEntry IMPORT_ENTRIES[] = {
+	{ "key-import-keyring", on_key_import_keyring, NULL, NULL, NULL }
 };
 
 static GList *
@@ -268,11 +264,12 @@ static void
 seahorse_keyserver_results_constructed (GObject *obj)
 {
 	SeahorseKeyserverResults *self = SEAHORSE_KEYSERVER_RESULTS (obj);
-	GtkActionGroup* actions;
+	GActionGroup* actions;
 	GtkTreeSelection *selection;
 	GtkWindow *window;
 	GtkBuilder *builder;
 	char* title;
+	gchar *name;
 
 	G_OBJECT_CLASS (seahorse_keyserver_results_parent_class)->constructed (obj);
 
@@ -291,21 +288,31 @@ seahorse_keyserver_results_constructed (GObject *obj)
 
 	g_signal_connect (window, "delete-event", G_CALLBACK (on_delete_event), self);
 
-	actions = gtk_action_group_new ("general");
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, GENERAL_ENTRIES, G_N_ELEMENTS (GENERAL_ENTRIES), self);
-	seahorse_catalog_include_actions (SEAHORSE_CATALOG (self), actions);
+	actions = G_ACTION_GROUP (g_simple_action_group_new ());
+	g_action_map_add_action_entries (G_ACTION_MAP (actions),
+					 GENERAL_ENTRIES,
+					 G_N_ELEMENTS (GENERAL_ENTRIES),
+					 self);
+	gtk_widget_insert_action_group (GTK_WIDGET (self), "app", actions);
+	g_object_unref (actions);
 
-	actions = gtk_action_group_new ("keyserver");
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, SERVER_ENTRIES, G_N_ELEMENTS (SERVER_ENTRIES), self);
-	seahorse_catalog_include_actions (SEAHORSE_CATALOG (self), actions);
+	actions = G_ACTION_GROUP (g_simple_action_group_new ());
+	g_action_map_add_action_entries (G_ACTION_MAP (actions),
+					 SERVER_ENTRIES,
+					 G_N_ELEMENTS (SERVER_ENTRIES),
+					 self);
+	gtk_widget_insert_action_group (GTK_WIDGET (self), "keyserver", actions);
+	g_object_unref (actions);
 
-	self->pv->import_actions = gtk_action_group_new ("import");
-	gtk_action_group_set_translation_domain (self->pv->import_actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (self->pv->import_actions, IMPORT_ENTRIES, G_N_ELEMENTS (IMPORT_ENTRIES), self);
-	g_object_set (gtk_action_group_get_action (self->pv->import_actions, "key-import-keyring"), "is-important", TRUE, NULL);
-	seahorse_catalog_include_actions (SEAHORSE_CATALOG (self), self->pv->import_actions);
+	actions = G_ACTION_GROUP (g_simple_action_group_new ());
+	g_action_map_add_action_entries (G_ACTION_MAP (actions),
+					 IMPORT_ENTRIES,
+					 G_N_ELEMENTS (IMPORT_ENTRIES),
+					 self);
+	gtk_widget_insert_action_group (GTK_WIDGET (self), "import", actions);
+	self->pv->import_action = G_SIMPLE_ACTION (g_action_map_lookup_action (G_ACTION_MAP (actions),
+									       "key-import-keyring"));
+	g_object_unref (actions);
 
 	/* init key list & selection settings */
 	builder = seahorse_catalog_get_builder (SEAHORSE_CATALOG (self));
@@ -321,10 +328,6 @@ seahorse_keyserver_results_constructed (GObject *obj)
 	/* Set focus to the current key list */
 	gtk_widget_grab_focus (GTK_WIDGET (self->pv->view));
 
-	/* To avoid flicker */
-	seahorse_catalog_ensure_updated (SEAHORSE_CATALOG (self));
-	gtk_widget_show (GTK_WIDGET (self));
-
 	self->pv->store = seahorse_key_manager_store_new (GCR_COLLECTION (self->pv->collection),
 	                                                  self->pv->view,
 	                                                  &self->pv->pred,
@@ -332,10 +335,15 @@ seahorse_keyserver_results_constructed (GObject *obj)
 	on_view_selection_changed (selection, self);
 
 	/* Include actions from the backend */
+	name = NULL;
 	actions = NULL;
-	g_object_get (seahorse_pgp_backend_get (), "actions", &actions, NULL);
-	seahorse_catalog_include_actions (SEAHORSE_CATALOG (self), actions);
+	g_object_get (seahorse_pgp_backend_get (),
+		      "name", &name,
+		      "actions", &actions,
+		      NULL);
+	gtk_widget_insert_action_group (GTK_WIDGET (self), name, actions);
 	g_object_unref (actions);
+	g_free (name);
 }
 
 /**
@@ -366,7 +374,7 @@ seahorse_keyserver_results_finalize (GObject *obj)
 	g_free (self->pv->search_string);
 	self->pv->search_string = NULL;
 
-	g_clear_object (&self->pv->import_actions);
+	g_clear_object (&self->pv->import_action);
 
 	g_clear_object (&self->pv->collection);
 

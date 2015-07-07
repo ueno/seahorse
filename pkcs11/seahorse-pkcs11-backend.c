@@ -42,7 +42,7 @@ enum {
 	PROP_LABEL,
 	PROP_DESCRIPTION,
 	PROP_ACTIONS,
-	PROP_LOADED,
+	PROP_LOADED
 };
 
 void  seahorse_pkcs11_backend_initialize (void);
@@ -195,7 +195,7 @@ seahorse_pkcs11_backend_get_description (SeahorseBackend *backend)
 	return _("X.509 certificates and related keys");
 }
 
-static GtkActionGroup *
+static GActionGroup *
 seahorse_pkcs11_backend_get_actions (SeahorseBackend *backend)
 {
 	return NULL;

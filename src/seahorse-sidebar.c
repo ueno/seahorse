@@ -289,7 +289,7 @@ update_backend (SeahorseSidebar *self,
                 GtkTreeIter *iter)
 {
 	GList *collections, *l;
-	GtkActionGroup *actions;
+	GActionGroup *actions;
 	GParamSpec *spec;
 	gchar *category;
 	gchar *tooltip;
@@ -915,26 +915,32 @@ popup_menu_for_place (SeahorseSidebar *self,
                       guint button,
                       guint32 activate_time)
 {
-	GtkActionGroup *actions = NULL;
+	GActionGroup *actions = NULL;
+	GMenuModel *model = NULL;
 	GtkMenu *menu;
-	GList *list, *l;
 	GtkWidget *item;
 	gboolean visible;
+	gchar *name;
 
-	menu = GTK_MENU (gtk_menu_new ());
-
-	/* First add all the actions from the collection */
-	g_object_get (place, "actions", &actions, NULL);
-	list = actions ? gtk_action_group_list_actions (actions) : NULL;
-	if (list) {
-		for (l = list; l != NULL; l = g_list_next (l)) {
-			gtk_action_set_accel_group (l->data, self->accel_group);
-			item = gtk_action_create_menu_item (l->data);
-			gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
-		}
-		g_list_free (list);
+	/* First create a menu from the collection */
+	g_object_get (place,
+		      "name", &name,
+		      "actions", &actions,
+		      "menu", &model,
+		      NULL);
+	if (actions) {
+		gtk_widget_insert_action_group (GTK_WIDGET (self),
+						name,
+						actions);
+		g_object_unref (actions);
 	}
-	g_clear_object (&actions);
+	g_free (name);
+
+	if (!model)
+		model = G_MENU_MODEL (g_menu_new ());
+
+	menu = GTK_MENU (gtk_menu_new_from_model (model));
+	g_object_unref (model);
 
 	/* Lock and unlock items */
 	if (SEAHORSE_IS_LOCKABLE (place)) {

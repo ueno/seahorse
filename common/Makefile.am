@@ -10,6 +10,7 @@ common_VALA = \
 	common/deleter.vala \
 	common/exportable.vala \
 	common/exporter.vala \
+	common/generator.vala \
 	common/icons.vala \
 	common/lockable.vala \
 	common/place.vala \

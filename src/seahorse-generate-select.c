@@ -42,7 +42,7 @@ struct _SeahorseGenerateSelect {
 	GtkDialog parent_instance;
 	GtkListStore* store;
 	GtkTreeView* view;
-	GList *action_groups;
+	GList *generators;
 };
 
 struct _SeahorseGenerateSelectClass {
@@ -60,13 +60,13 @@ G_DEFINE_TYPE (SeahorseGenerateSelect, seahorse_generate_select, GTK_TYPE_DIALOG
 
 static const char* TEMPLATE = "<span size=\"larger\" weight=\"bold\">%s</span>\n%s";
 
-static GtkAction *
+static GAction *
 get_selected_action (SeahorseGenerateSelect *self)
 {
 	GtkTreeSelection *selection;
 	GtkTreeIter iter;
 	GtkTreeModel *model;
-	GtkAction *action;
+	GAction *action;
 
 	selection = gtk_tree_view_get_selection (self->view);
 	if (!gtk_tree_selection_get_selected (selection, &model, &iter))
@@ -86,7 +86,7 @@ on_row_activated (GtkTreeView *view,
                   gpointer user_data)
 {
 	SeahorseGenerateSelect *self = SEAHORSE_GENERATE_SELECT (user_data);
-	GtkAction *action;
+	GAction *action;
 	GtkWindow *parent;
 
 	action = get_selected_action (self);
@@ -111,7 +111,7 @@ on_response (GtkDialog *dialog,
              gpointer user_data)
 {
 	SeahorseGenerateSelect *self = SEAHORSE_GENERATE_SELECT (user_data);
-	GtkAction *action = NULL;
+	GAction *action = NULL;
 	GtkWindow *parent = NULL;
 
 	if (response == GTK_RESPONSE_OK) 
@@ -161,50 +161,85 @@ seahorse_generate_select_constructed (GObject *obj)
 	GtkCellRenderer *pixcell;
 	GtkTreeSelection *selection;
 	GtkTreeIter iter;
-	GList *actions;
-	GList *l, *k;
+	GList *l;
 	GIcon *icon;
 	GtkBuilder *builder;
 	const gchar *path;
 	GError *error = NULL;
 	const gchar *icon_name;
-	GtkAction *action;
+	GAction *action;
 
 	G_OBJECT_CLASS (seahorse_generate_select_parent_class)->constructed (obj);
 
-	self->store = gtk_list_store_new (COLUMN_N_COLUMNS, G_TYPE_ICON, G_TYPE_STRING, GTK_TYPE_ACTION);
+	self->store = gtk_list_store_new (COLUMN_N_COLUMNS, G_TYPE_ICON, G_TYPE_STRING, G_TYPE_ACTION);
 	gtk_tree_sortable_set_default_sort_func (GTK_TREE_SORTABLE (self->store), on_list_sort, NULL, NULL);
 	gtk_tree_sortable_set_sort_column_id (GTK_TREE_SORTABLE (self->store), GTK_TREE_SORTABLE_DEFAULT_SORT_COLUMN_ID, GTK_SORT_ASCENDING);
 
-	self->action_groups = seahorse_registry_object_instances ("generator");
-	for (l = self->action_groups; l != NULL; l = g_list_next (l)) {
-		actions = gtk_action_group_list_actions (l->data);
-		for (k = actions; k != NULL; k = g_list_next (k)) {
-			action = k->data;
+	self->generators = seahorse_generator_get_registered ();
+	for (l = self->generators; l != NULL; l = g_list_next (l)) {
+		gchar *name;
+		GActionGroup *actions = NULL;
+		GMenuModel *menu = NULL;
+		gint n_items, i;
 
-			text = g_strdup_printf (TEMPLATE, gtk_action_get_label (action),
-			                        gtk_action_get_tooltip (action));
+		g_object_get (l->data,
+			      "name", &name,
+			      "actions", &actions,
+			      "menu", &menu,
+			      NULL);
 
-			icon = gtk_action_get_gicon (action);
-			if (icon == NULL) {
-				icon_name = gtk_action_get_icon_name (action);
-				if (icon_name)
-					icon = g_themed_icon_new (icon_name);
-				gtk_action_get_stock_id (action);
-			} else {
-				g_object_ref (icon);
-			}
+		if (actions == NULL || menu == NULL)
+			continue;
 
+		gtk_widget_insert_action_group (GTK_WIDGET (self),
+						name,
+						actions);
+		g_object_unref (actions);
+
+		n_items = g_menu_model_get_n_items (menu);
+		for (i = 0; i < n_items; i++) {
+			gchar *label;
+			gchar *action_name;
+			gchar *tooltip;
+			GVariant *icon_data;
+			g_menu_model_get_item_attribute (menu,
+							 i,
+							 G_MENU_ATTRIBUTE_LABEL,
+							 "s",
+							 &label);
+			g_menu_model_get_item_attribute (menu,
+							 i,
+							 "tooltip",
+							 "s",
+							 &tooltip);
+			text = g_strdup_printf (TEMPLATE, label, tooltip);
+			g_free (label);
+			g_free (tooltip);
+
+			g_menu_model_get_item_attribute (menu,
+							 i,
+							 G_MENU_ATTRIBUTE_ACTION,
+							 "s",
+							 &action_name);
+			action = g_action_map_lookup_action (G_ACTION_MAP (actions),
+							     action_name + strlen (name) + 1);
+			g_free (action_name);
+
+			icon_data = g_menu_model_get_item_attribute_value (menu,
+								 i,
+								 G_MENU_ATTRIBUTE_ICON,
+								 NULL);
+			icon = g_icon_deserialize (icon_data);
+			g_variant_unref (icon_data);
 			gtk_list_store_append (self->store, &iter);
 			gtk_list_store_set (self->store, &iter,
-			                    COLUMN_TEXT, text, 
-			                    COLUMN_ICON, icon, 
-			                    COLUMN_ACTION, k->data,
-			                    -1);
+					    COLUMN_TEXT, text,
+					    COLUMN_ICON, icon,
+					    COLUMN_ACTION, action,
+					    -1);
 			g_clear_object (&icon);
 		}
-
-		g_list_free (actions);
+		g_object_unref (menu);
 	}
 
 	builder = gtk_builder_new ();
@@ -264,7 +299,7 @@ seahorse_generate_select_finalize (GObject *obj)
 	SeahorseGenerateSelect *self = SEAHORSE_GENERATE_SELECT (obj);
 
 	g_clear_object (&self->store);
-	g_list_free_full (self->action_groups, g_object_unref);
+	g_list_free_full (self->generators, g_object_unref);
 
 	G_OBJECT_CLASS (seahorse_generate_select_parent_class)->finalize (obj);
 }

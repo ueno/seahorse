@@ -21,6 +21,7 @@
 #include "config.h"
 
 
+#include "seahorse-ssh.h"
 #include "seahorse-ssh-key.h"
 #include "seahorse-ssh-operation.h"
 #include "seahorse-ssh-source.h"
@@ -41,12 +42,14 @@
 
 enum {
 	PROP_0,
+	PROP_NAME,
 	PROP_LABEL,
 	PROP_DESCRIPTION,
 	PROP_ICON,
 	PROP_BASE_DIRECTORY,
 	PROP_URI,
-	PROP_ACTIONS
+	PROP_ACTIONS,
+	PROP_MENU
 };
 
 struct _SeahorseSSHSourcePrivate {
@@ -214,6 +217,12 @@ merge_keydata (SeahorseSSHKey *prev, SeahorseSSHKeyData *keydata)
 }
 
 static gchar *
+seahorse_ssh_source_get_name (SeahorsePlace *place)
+{
+	return g_strdup (SEAHORSE_SSH_NAME);
+}
+
+static gchar *
 seahorse_ssh_source_get_label (SeahorsePlace *place)
 {
 	return g_strdup (_("OpenSSH keys"));
@@ -239,8 +248,14 @@ seahorse_ssh_source_get_icon (SeahorsePlace *place)
 	return g_themed_icon_new (GCR_ICON_HOME_DIRECTORY);
 }
 
-static GtkActionGroup *
+static GActionGroup *
 seahorse_ssh_source_get_actions (SeahorsePlace* self)
+{
+	return NULL;
+}
+
+static GMenuModel *
+seahorse_ssh_source_get_menu (SeahorsePlace* self)
 {
 	return NULL;
 }
@@ -255,6 +270,9 @@ seahorse_ssh_source_get_property (GObject *obj,
 	SeahorsePlace *place = SEAHORSE_PLACE (obj);
 
 	switch (prop_id) {
+	case PROP_NAME:
+		g_value_take_string (value, seahorse_ssh_source_get_name (place));
+		break;
 	case PROP_LABEL:
 		g_value_take_string (value, seahorse_ssh_source_get_label (place));
 		break;
@@ -272,6 +290,9 @@ seahorse_ssh_source_get_property (GObject *obj,
 		break;
 	case PROP_ACTIONS:
 		g_value_take_object (value, seahorse_ssh_source_get_actions (place));
+		break;
+	case PROP_MENU:
+		g_value_take_object (value, seahorse_ssh_source_get_menu (place));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (obj, prop_id, pspec);
@@ -361,11 +382,13 @@ seahorse_ssh_source_class_init (SeahorseSSHSourceClass *klass)
     gobject_class->finalize = seahorse_ssh_source_finalize;
     gobject_class->get_property = seahorse_ssh_source_get_property;
 
+    g_object_class_override_property (gobject_class, PROP_NAME, "name");
     g_object_class_override_property (gobject_class, PROP_LABEL, "label");
     g_object_class_override_property (gobject_class, PROP_DESCRIPTION, "description");
     g_object_class_override_property (gobject_class, PROP_URI, "uri");
     g_object_class_override_property (gobject_class, PROP_ICON, "icon");
     g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
+    g_object_class_override_property (gobject_class, PROP_MENU, "menu");
 
     g_object_class_install_property (gobject_class, PROP_BASE_DIRECTORY,
         g_param_spec_string ("base-directory", "Key directory", "Directory where the keys are stored",
@@ -862,6 +885,8 @@ seahorse_ssh_source_place_iface (SeahorsePlaceIface *iface)
 	iface->get_description = seahorse_ssh_source_get_description;
 	iface->get_icon = seahorse_ssh_source_get_icon;
 	iface->get_label = seahorse_ssh_source_get_label;
+	iface->get_menu = seahorse_ssh_source_get_menu;
+	iface->get_name = seahorse_ssh_source_get_name;
 	iface->get_uri = seahorse_ssh_source_get_uri;
 }
 

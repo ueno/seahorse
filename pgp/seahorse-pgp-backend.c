@@ -54,7 +54,7 @@ struct _SeahorsePgpBackend {
 	SeahorseDiscovery *discovery;
 	SeahorseUnknownSource *unknown;
 	GHashTable *remotes;
-	GtkActionGroup *actions;
+	GActionGroup *actions;
 	gboolean loaded;
 };
 
@@ -199,11 +199,33 @@ seahorse_pgp_backend_get_description (SeahorseBackend *backend)
 	return _("PGP keys are for encrypting email or files");
 }
 
-static GtkActionGroup *
+static GActionGroup *
 seahorse_pgp_backend_get_actions (SeahorseBackend *backend)
 {
 	SeahorsePgpBackend *self = SEAHORSE_PGP_BACKEND (backend);
 	return g_object_ref (self->actions);
+}
+
+static void
+seahorse_pgp_backend_included (SeahorseBackend *backend,
+			       SeahorseCatalog *catalog)
+{
+	GMenu *menu = g_menu_new ();
+	GMenuItem *item;
+
+	item = g_menu_item_new (_("_Find Remote Keys..."),
+				SEAHORSE_PGP_NAME ".remote-find");
+	g_menu_append_item (menu, item);
+	g_object_unref (item);
+	item = g_menu_item_new (_("_Sync and Publish Keys..."),
+				SEAHORSE_PGP_NAME ".remote-sync");
+	g_menu_append_item (menu, item);
+	g_object_unref (item);
+	seahorse_catalog_update_menu (catalog,
+				      "menubar",
+				      "remote-menu",
+				      G_MENU_MODEL (menu));
+	g_object_unref (menu);
 }
 
 static void
@@ -319,6 +341,7 @@ seahorse_pgp_backend_iface (SeahorseBackendIface *iface)
 	iface->get_description = seahorse_pgp_backend_get_description;
 	iface->get_label = seahorse_pgp_backend_get_label;
 	iface->get_name = seahorse_pgp_backend_get_name;
+	iface->included = seahorse_pgp_backend_included;
 }
 
 SeahorsePgpBackend *

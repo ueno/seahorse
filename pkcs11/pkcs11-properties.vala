@@ -28,22 +28,11 @@ namespace Pkcs11 {
 public class Properties : Gtk.Window {
 	public Gck.Object object { construct; get; }
 
-	private static string UI_STRING =
-		"""<ui>
-			<toolbar name='Toolbar'>
-				<toolitem action='export-object'/>
-				<toolitem action='delete-object'/>
-				<separator name='MiddleSeparator' expand='true'/>
-				<toolitem action='request-certificate'/>
-			</toolbar>
-		</ui>""";
-
 	private Gtk.Box _content;
 	private Gcr.Viewer _viewer;
 	private GLib.Cancellable _cancellable;
 	private Gck.Object _request_key;
-	private Gtk.UIManager _ui_manager;
-	private Gtk.ActionGroup _actions;
+	private GLib.ActionGroup _actions;
 
 	public Properties(Gck.Object object,
 	                  Gtk.Window window) {
@@ -64,40 +53,48 @@ public class Properties : Gtk.Window {
 		this._viewer.set_vexpand(true);
 		this._viewer.show();
 
+		var toolbar = new Gtk.Toolbar();
+
+		var gicon = new GLib.ThemedIcon(Gtk.Stock.SAVE_AS);
+		var icon = new Gtk.Image.from_gicon(gicon, Gtk.IconSize.SMALL_TOOLBAR);
+		var item = new Gtk.ToolButton(icon, _("_Export"));
+		item.set_action_name("%s.export-object".printf(PKCS11_NAME));
+		item.set_tooltip_text(_("Export the certificate"));
+		toolbar.add(item);
+
+		gicon = new GLib.ThemedIcon(Gtk.Stock.DELETE);
+		icon = new Gtk.Image.from_gicon(gicon, Gtk.IconSize.SMALL_TOOLBAR);
+		item = new Gtk.ToolButton(icon, _("_Delete"));
+		item.set_action_name("%s.delete-object".printf(PKCS11_NAME));
+		item.set_tooltip_text(_("Delete this certificate or key"));
+		toolbar.add(item);
+
+		toolbar.add(new Gtk.SeparatorToolItem());
+
+		item = new Gtk.ToolButton(null, _("Request _Certificate"));
+		item.set_action_name("%s.request-certificate".printf(PKCS11_NAME));
+		item.set_tooltip_text(_("Create a certificate request file for this key"));
+
+		this._content.pack_start(toolbar, false, true, 0);
+		this._content.reorder_child(toolbar, 0);
+
+		toolbar.get_style_context().add_class(Gtk.STYLE_CLASS_PRIMARY_TOOLBAR);
+		toolbar.reset_style();
+		toolbar.show_all();
+
 		/* ... */
 
-		this._actions = new Gtk.ActionGroup("Pkcs11Actions");
-		this._actions.set_translation_domain(Config.GETTEXT_PACKAGE);
-		this._actions.add_actions(UI_ACTIONS, this);
-		var action = this._actions.get_action("delete-object");
-		this.object.bind_property("deletable", action, "sensitive",
+		this._actions = new GLib.SimpleActionGroup();
+		((GLib.ActionMap) this._actions).add_action_entries(UI_ACTIONS, this);
+		var action = ((GLib.ActionMap) this._actions).lookup_action("delete-object");
+		this.object.bind_property("deletable", action, "enabled",
 		                          GLib.BindingFlags.SYNC_CREATE);
-		action = this._actions.get_action("export-object");
-		this.object.bind_property("exportable", action, "sensitive",
+		action = ((GLib.ActionMap) this._actions).lookup_action("export-object");
+		this.object.bind_property("exportable", action, "enabled",
 		                          GLib.BindingFlags.SYNC_CREATE);
-		var request = this._actions.get_action("request-certificate");
-		request.is_important = true;
-		request.visible = false;
-
-		this._ui_manager = new Gtk.UIManager();
-		this._ui_manager.insert_action_group(this._actions, 0);
-		this._ui_manager.add_widget.connect((widget) => {
-			if (!(widget is Gtk.Toolbar))
-				return;
-
-			this._content.pack_start(widget, false, true, 0);
-			this._content.reorder_child(widget, 0);
-
-			widget.get_style_context().add_class(Gtk.STYLE_CLASS_PRIMARY_TOOLBAR);
-			widget.reset_style();
-			widget.show();
-		});
-		try {
-			this._ui_manager.add_ui_from_string(UI_STRING, -1);
-		} catch (GLib.Error err) {
-			GLib.critical ("%s", err.message);
-		}
-		this._ui_manager.ensure_update();
+		var request = ((GLib.ActionMap) this._actions).lookup_action("request-certificate");
+		((GLib.SimpleAction) request).set_enabled(false);
+		this.insert_action_group(PKCS11_NAME, this._actions);
 
 		this.object.notify["label"].connect(() => { this.update_label(); });
 		this.update_label();
@@ -115,8 +112,8 @@ public class Properties : Gtk.Window {
 		if (this.object is Exportable)
 			exporters = ((Exportable)this.object).create_exporters(ExporterType.ANY);
 
-		var export = this._actions.get_action("export-object");
-		export.set_visible(exporters != null);
+		var export = ((GLib.ActionMap) this._actions).lookup_action("export-object");
+		((GLib.SimpleAction) export).set_enabled(exporters != null);
 
 		this._viewer.grab_focus();
 	}
@@ -156,7 +153,7 @@ public class Properties : Gtk.Window {
 		}
 	}
 
-	private void on_export_certificate(Gtk.Action action) {
+	private void on_export_certificate(GLib.SimpleAction action, GLib.Variant? parameter) {
 		GLib.List<GLib.Object> objects = null;
 		objects.append(this.object);
 		try {
@@ -166,7 +163,7 @@ public class Properties : Gtk.Window {
 		}
 	}
 
-	private void on_delete_objects(Gtk.Action action) {
+	private void on_delete_objects(GLib.SimpleAction action, GLib.Variant? parameter) {
 		GLib.Object? partner;
 		this.object.get("partner", out partner);
 
@@ -191,17 +188,14 @@ public class Properties : Gtk.Window {
 		}
 	}
 
-	private void on_request_certificate(Gtk.Action action) {
+	private void on_request_certificate(GLib.SimpleAction action, GLib.Variant? parameter) {
 		Request.prompt(this, this._request_key);
 	}
 
-	private static const Gtk.ActionEntry[] UI_ACTIONS = {
-		{ "export-object", Gtk.Stock.SAVE_AS, N_("_Export"), "",
-		  N_("Export the certificate"), on_export_certificate },
-		{ "delete-object", Gtk.Stock.DELETE, N_("_Delete"), "<Ctrl>Delete",
-		  N_("Delete this certificate or key"), on_delete_objects },
-		{ "request-certificate", null, N_("Request _Certificate"), null,
-		  N_("Create a certificate request file for this key"), on_request_certificate },
+	private static const GLib.ActionEntry[] UI_ACTIONS = {
+		{ "export-object", on_export_certificate, null, null, null },
+		{ "delete-object", on_delete_objects, null, null, null },
+		{ "request-certificate", on_request_certificate, null, null, null }
 	};
 
 	private void check_certificate_request_capable(GLib.Object object) {
@@ -211,8 +205,8 @@ public class Properties : Gtk.Window {
 		Gcr.CertificateRequest.capable_async.begin((PrivateKey)object, this._cancellable, (obj, res) => {
 			try {
 				if (Gcr.CertificateRequest.capable_async.end(res)) {
-					var request = this._actions.get_action("request-certificate");
-					request.set_visible(true);
+					var request = ((GLib.ActionMap) this._actions).lookup_action("request-certificate");
+					((GLib.SimpleAction) request).set_enabled(true);
 					this._request_key = (PrivateKey)object;
 				}
 			} catch (GLib.Error err) {

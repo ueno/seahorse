@@ -1,7 +1,7 @@
 /*
  * Seahorse
  *
- * Copyright (C) 2011 Collabora Ltd.
+ * Copyright (C) 2015 Daiki Ueno
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,24 +18,17 @@
 
 namespace Seahorse {
 
-public interface Backend : Gcr.Collection {
+public interface Generator : GLib.Object {
 	public abstract string name { get; }
-	public abstract string label { get; }
-	public abstract string description { get; }
 	public abstract GLib.ActionGroup actions { owned get; }
-	public abstract bool loaded { get; }
-
-	public abstract Place lookup_place(string uri);
+	public abstract GLib.MenuModel menu { owned get; }
 
 	public void register() {
-		Registry.register_object(this, "backend");
+		Registry.register_object(this, "generator");
 	}
 
-	public static GLib.List<Backend> get_registered() {
-		return (GLib.List<Seahorse.Backend>)Registry.object_instances("backend");
-	}
-
-	public virtual signal void included(Catalog catalog) {
+	public static GLib.List<Generator> get_registered() {
+		return (GLib.List<Seahorse.Generator>)Registry.object_instances("generator");
 	}
 }
 

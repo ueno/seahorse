@@ -21,11 +21,13 @@
 namespace Seahorse {
 
 public interface Place : Gcr.Collection {
+	public abstract string name { owned get; }
 	public abstract string label { owned get; }
 	public abstract string description { owned get; }
 	public abstract string uri { owned get; }
 	public abstract GLib.Icon icon { owned get; }
-	public abstract Gtk.ActionGroup? actions { owned get; }
+	public abstract GLib.ActionGroup? actions { owned get; }
+	public abstract GLib.MenuModel? menu { owned get; }
 
 	public abstract async bool load(GLib.Cancellable? cancellable) throws GLib.Error;
 }

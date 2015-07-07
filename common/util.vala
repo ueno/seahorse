@@ -84,6 +84,53 @@ namespace Util {
 
 		return builder;
 	}
+
+	private GLib.MenuModel? find_submenu_model(GLib.MenuModel model,
+											   string submodel_id)
+	{
+		GLib.MenuModel? insertion_model = null;
+		for (var i = 0; i < model.get_n_items(); i++) {
+			var value = model.get_item_attribute_value(i, "id", GLib.VariantType.STRING);
+			if (value != null && value.get_string() == submodel_id) {
+				insertion_model = model.get_item_link(i, GLib.Menu.LINK_SECTION);
+				if (insertion_model == null)
+					insertion_model = model.get_item_link(i, GLib.Menu.LINK_SUBMENU);
+				if (insertion_model != null)
+					break;
+			} else {
+				var submodel = model.get_item_link(i, GLib.Menu.LINK_SECTION);
+				if (submodel == null)
+					submodel = model.get_item_link(i, GLib.Menu.LINK_SUBMENU);
+				if (submodel == null)
+					continue;
+				for (var j = 0; j < submodel.get_n_items(); j++) {
+					var submenu = model.get_item_link(i, GLib.Menu.LINK_SUBMENU);
+					if (submenu != null)
+						insertion_model = find_submenu_model(submenu, submodel_id);
+					if (insertion_model != null)
+						break;
+				}
+			}
+		}
+		return insertion_model;
+	}
+
+	public void merge_menu(GLib.Menu original,
+						   GLib.Menu gmenu_to_merge,
+						   string submodel_name,
+						   bool prepend)
+	{
+		var submodel = Util.find_submenu_model(original, submodel_name);
+		if (submodel == null)
+			return;
+		for (var i = 0; i < gmenu_to_merge.get_n_items(); i++) {
+			var item = new GLib.MenuItem.from_model(gmenu_to_merge, i);
+			if (prepend)
+				((GLib.Menu) submodel).prepend_item(item);
+			else
+				((GLib.Menu) submodel).append_item(item);
+		}
+	}
 }
 
 }

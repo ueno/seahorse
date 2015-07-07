@@ -61,7 +61,7 @@ enum {
  */
 struct _SeahorseObjectPrivate {
 	SeahorsePlace *place;
-	GtkActionGroup *actions;
+	GActionGroup *actions;
 
     gchar *label;             
     gchar *markup;
@@ -393,7 +393,7 @@ seahorse_object_class_init (SeahorseObjectClass *klass)
 
 	g_object_class_install_property (gobject_class, PROP_ACTIONS,
 	           g_param_spec_object ("actions", "Actions", "Actions for the object",
-	                                GTK_TYPE_ACTION_GROUP, G_PARAM_READWRITE));
+	                                G_TYPE_ACTION_GROUP, G_PARAM_READWRITE));
 
 	g_object_class_install_property (gobject_class, PROP_LABEL,
 	           g_param_spec_string ("label", "Object Display Label", "This object's displayable label.", 

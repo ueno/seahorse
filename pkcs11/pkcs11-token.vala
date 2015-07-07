@@ -67,6 +67,12 @@ public class Token : GLib.Object, Gcr.Collection, Place, Lockable {
 		construct { this._slot = value; }
 	}
 
+	public string name {
+		owned get {
+			return PKCS11_NAME;
+		}
+	}
+
 	public string label {
 		owned get {
 			var token = this._slot.get_token_info();
@@ -98,7 +104,11 @@ public class Token : GLib.Object, Gcr.Collection, Place, Lockable {
 		}
 	}
 
-	public Gtk.ActionGroup? actions {
+	public GLib.ActionGroup? actions {
+		owned get { return null; }
+	}
+
+	public GLib.MenuModel? menu {
 		owned get { return null; }
 	}
 

@@ -48,48 +48,37 @@ GType   seahorse_pgp_backend_actions_get_type         (void) G_GNUC_CONST;
 #define SEAHORSE_PGP_BACKEND_ACTIONS_GET_CLASS(obj)   (G_TYPE_INSTANCE_GET_CLASS ((obj), SEAHORSE_TYPE_PGP_BACKEND_ACTIONS, SeahorsePgpBackendActionsClass))
 
 typedef struct {
-	SeahorseActions parent_instance;
+	GSimpleActionGroup parent_instance;
 } SeahorsePgpBackendActions;
 
 typedef struct {
-	SeahorseActionsClass parent_class;
+	GSimpleActionGroupClass parent_class;
 } SeahorsePgpBackendActionsClass;
 
-G_DEFINE_TYPE (SeahorsePgpBackendActions, seahorse_pgp_backend_actions, SEAHORSE_TYPE_ACTIONS);
+G_DEFINE_TYPE (SeahorsePgpBackendActions, seahorse_pgp_backend_actions, G_TYPE_SIMPLE_ACTION_GROUP);
 
 #ifdef WITH_KEYSERVER
 
-static const gchar* BACKEND_DEFINITION = ""\
-"<ui>"\
-"	<menubar>"\
-"		<placeholder name='RemoteMenu'>"\
-"			<menu name='Remote' action='remote-menu'>"\
-"				<menuitem action='remote-find'/>"\
-"				<menuitem action='remote-sync'/>"\
-"			</menu>"\
-"		</placeholder>"\
-"	</menubar>"\
-"</ui>";
-
 static void
-on_remote_find (GtkAction* action,
+on_remote_find (GSimpleAction *action, GVariant *parameter,
                 gpointer user_data)
 {
-	seahorse_keyserver_search_show (seahorse_action_get_window (action));
+	seahorse_keyserver_search_show (seahorse_action_get_window (G_ACTION (action)));
 }
 
 static void
-on_remote_sync (GtkAction* action,
+on_remote_sync (GSimpleAction *action, GVariant *parameter,
                 gpointer user_data)
 {
-	SeahorseActions *actions = SEAHORSE_ACTIONS (user_data);
+	GSimpleActionGroup *actions = G_SIMPLE_ACTION_GROUP (user_data);
 	SeahorseGpgmeKeyring *keyring;
 	SeahorseCatalog *catalog;
 	GList *objects = NULL;
 	GList *keys = NULL;
 	GList *l;
 
-	catalog = seahorse_actions_get_catalog (actions);
+	catalog = g_object_get_data (G_OBJECT (actions),
+				     "seahorse-action-catalog");
 	if (catalog != NULL) {
 		objects = seahorse_catalog_get_selected_objects (catalog);
 		for (l = objects; l != NULL; l = g_list_next (l)) {
@@ -105,18 +94,16 @@ on_remote_sync (GtkAction* action,
 		keys = gcr_collection_get_objects (GCR_COLLECTION (keyring));
 	}
 
-	seahorse_keyserver_sync_show (keys, seahorse_action_get_window (action));
+	seahorse_keyserver_sync_show (keys, seahorse_action_get_window (G_ACTION (action)));
 	g_list_free (keys);
 }
 
-static const GtkActionEntry FIND_ACTIONS[] = {
-	{ "remote-find", GTK_STOCK_FIND, N_("_Find Remote Keys..."), "",
-	  N_("Search for keys on a key server"), G_CALLBACK (on_remote_find) },
+static const GActionEntry FIND_ACTIONS[] = {
+	{ "remote-find", on_remote_find, NULL, NULL, NULL }
 };
 
-static const GtkActionEntry SYNC_ACTIONS[] = {
-	{ "remote-sync", GTK_STOCK_REFRESH, N_("_Sync and Publish Keys..."), "",
-	  N_("Publish and/or synchronize your keys with those online."), G_CALLBACK (on_remote_sync) }
+static const GActionEntry SYNC_ACTIONS[] = {
+	{ "remote-sync", on_remote_sync, NULL, NULL, NULL }
 };
 
 #endif /* WITH_KEYSERVER */
@@ -125,13 +112,10 @@ static void
 seahorse_pgp_backend_actions_init (SeahorsePgpBackendActions *self)
 {
 #ifdef WITH_KEYSERVER
-	GtkActionGroup *actions = GTK_ACTION_GROUP (self);
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, FIND_ACTIONS,
-	                              G_N_ELEMENTS (FIND_ACTIONS), NULL);
-	gtk_action_group_add_actions (actions, SYNC_ACTIONS,
-	                              G_N_ELEMENTS (SYNC_ACTIONS), self);
-	seahorse_actions_register_definition (SEAHORSE_ACTIONS (self), BACKEND_DEFINITION);
+	g_action_map_add_action_entries (G_ACTION_MAP (self), FIND_ACTIONS,
+					 G_N_ELEMENTS (FIND_ACTIONS), NULL);
+	g_action_map_add_action_entries (G_ACTION_MAP (self), SYNC_ACTIONS,
+					 G_N_ELEMENTS (SYNC_ACTIONS), self);
 #endif
 }
 
@@ -141,14 +125,13 @@ seahorse_pgp_backend_actions_class_init (SeahorsePgpBackendActionsClass *klass)
 
 }
 
-GtkActionGroup *
+GActionGroup *
 seahorse_pgp_backend_actions_instance (void)
 {
-	static GtkActionGroup *actions = NULL;
+	static GActionGroup *actions = NULL;
 
 	if (actions == NULL) {
 		actions = g_object_new (SEAHORSE_TYPE_PGP_BACKEND_ACTIONS,
-		                        "name", "pgp-backend",
 		                        NULL);
 		g_object_add_weak_pointer (G_OBJECT (actions),
 		                           (gpointer *)&actions);
@@ -168,23 +151,21 @@ GType   seahorse_gpgme_key_actions_get_type       (void) G_GNUC_CONST;
 #define seahorse_gpgme_key_actions_GET_CLASS(obj) (G_TYPE_INSTANCE_GET_CLASS ((obj), SEAHORSE_TYPE_PGP_ACTIONS, SeahorseGpgmeKeyActionsClass))
 
 typedef struct {
-	SeahorseActions parent_instance;
+	GSimpleActionGroup parent_instance;
 } SeahorseGpgmeKeyActions;
 
 typedef struct {
-	SeahorseActionsClass parent_class;
+	GSimpleActionGroupClass parent_class;
 } SeahorseGpgmeKeyActionsClass;
 
-G_DEFINE_TYPE (SeahorseGpgmeKeyActions, seahorse_gpgme_key_actions, SEAHORSE_TYPE_ACTIONS);
+G_DEFINE_TYPE (SeahorseGpgmeKeyActions, seahorse_gpgme_key_actions, G_TYPE_SIMPLE_ACTION_GROUP);
 
 static void
 seahorse_gpgme_key_actions_init (SeahorseGpgmeKeyActions *self)
 {
 #ifdef WITH_KEYSERVER
-	GtkActionGroup *actions = GTK_ACTION_GROUP (self);
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, SYNC_ACTIONS,
-	                              G_N_ELEMENTS (SYNC_ACTIONS), NULL);
+	g_action_map_add_action_entries (G_ACTION_MAP (self), SYNC_ACTIONS,
+					 G_N_ELEMENTS (SYNC_ACTIONS), NULL);
 #endif
 }
 
@@ -194,14 +175,13 @@ seahorse_gpgme_key_actions_class_init (SeahorseGpgmeKeyActionsClass *klass)
 
 }
 
-GtkActionGroup *
+GActionGroup *
 seahorse_gpgme_key_actions_instance (void)
 {
-	static GtkActionGroup *actions = NULL;
+	static GActionGroup *actions = NULL;
 
 	if (actions == NULL) {
 		actions = g_object_new (SEAHORSE_TYPE_GPGME_KEY_ACTIONS,
-		                        "name", "gpgme-key",
 		                        NULL);
 		g_object_add_weak_pointer (G_OBJECT (actions),
 		                           (gpointer *)&actions);

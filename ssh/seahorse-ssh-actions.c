@@ -45,39 +45,25 @@ GType   seahorse_ssh_actions_get_type             (void);
 #define SEAHORSE_SSH_ACTIONS_GET_CLASS(obj)       (G_TYPE_INSTANCE_GET_CLASS ((obj), SEAHORSE_TYPE_SSH_ACTIONS, SeahorseSshActionsClass))
 
 typedef struct {
-	SeahorseActions parent_instance;
+	GSimpleActionGroup parent_instance;
 } SeahorseSshActions;
 
 typedef struct {
-	SeahorseActionsClass parent_class;
+	GSimpleActionGroupClass parent_class;
 } SeahorseSshActionsClass;
 
-G_DEFINE_TYPE (SeahorseSshActions, seahorse_ssh_actions, SEAHORSE_TYPE_ACTIONS);
-
-static const char* UI_DEFINITION = ""\
-"<ui>"\
-"	<menubar>"\
-"		<placeholder name='RemoteMenu'>"\
-"			<menu name='Remote' action='remote-menu'>"\
-"				<menuitem action='remote-ssh-upload'/>"\
-"			</menu>"\
-"		</placeholder>"\
-"	</menubar>"\
-"	<popup name='ObjectPopup'>"\
-"		<menuitem action='remote-ssh-upload'/>"\
-"	</popup>"\
-"</ui>";
+G_DEFINE_TYPE (SeahorseSshActions, seahorse_ssh_actions, G_TYPE_SIMPLE_ACTION_GROUP);
 
 static void
-on_ssh_upload (GtkAction* action,
-               gpointer user_data)
+on_ssh_upload (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-	SeahorseActions *actions = SEAHORSE_ACTIONS (user_data);
+	GSimpleActionGroup *actions = G_SIMPLE_ACTION_GROUP (user_data);
 	SeahorseCatalog *catalog;
 	GList *keys, *objects, *l;
 
 	keys = NULL;
-	catalog = seahorse_actions_get_catalog (actions);
+	catalog = g_object_get_data (G_OBJECT (actions),
+				     "seahorse-action-catalog");
 
 	if (catalog != NULL) {
 		objects = seahorse_catalog_get_selected_objects (catalog);
@@ -89,23 +75,21 @@ on_ssh_upload (GtkAction* action,
 	}
 	g_object_unref (catalog);
 
-	seahorse_ssh_upload_prompt (keys, seahorse_action_get_window (action));
+	seahorse_ssh_upload_prompt (keys, seahorse_action_get_window (G_ACTION (action)));
 	g_list_free (keys);
 }
 
-static const GtkActionEntry KEYS_ACTIONS[] = {
-	{ "remote-ssh-upload", NULL, N_ ("Configure Key for _Secure Shell..."), "",
-		N_ ("Send public Secure Shell key to another machine, and enable logins using that key."),
-		G_CALLBACK (on_ssh_upload) },
+static const GActionEntry KEYS_ACTIONS[] = {
+	{ "remote-ssh-upload", on_ssh_upload, NULL, NULL, NULL }
 };
 
 static void
 seahorse_ssh_actions_init (SeahorseSshActions *self)
 {
-	GtkActionGroup *actions = GTK_ACTION_GROUP (self);
-	gtk_action_group_set_translation_domain (actions, GETTEXT_PACKAGE);
-	gtk_action_group_add_actions (actions, KEYS_ACTIONS, G_N_ELEMENTS (KEYS_ACTIONS), self);
-	seahorse_actions_register_definition (SEAHORSE_ACTIONS (self), UI_DEFINITION);
+	g_action_map_add_action_entries (G_ACTION_MAP (self),
+					 KEYS_ACTIONS,
+					 G_N_ELEMENTS (KEYS_ACTIONS),
+					 self);
 }
 
 static void
@@ -114,14 +98,13 @@ seahorse_ssh_actions_class_init (SeahorseSshActionsClass *klass)
 
 }
 
-GtkActionGroup *
+GActionGroup *
 seahorse_ssh_actions_instance (void)
 {
-	static GtkActionGroup *actions = NULL;
+	static GActionGroup *actions = NULL;
 
 	if (actions == NULL) {
 		actions = g_object_new (SEAHORSE_TYPE_SSH_ACTIONS,
-		                        "name", "SshKey",
 		                        NULL);
 		g_object_add_weak_pointer (G_OBJECT (actions),
 		                           (gpointer *)&actions);
