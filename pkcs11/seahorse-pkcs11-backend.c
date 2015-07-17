@@ -39,6 +39,7 @@
 enum {
 	PROP_0,
 	PROP_NAME,
+	PROP_BACKEND_TYPE,
 	PROP_LABEL,
 	PROP_DESCRIPTION,
 	PROP_ACTIONS,
@@ -183,6 +184,12 @@ seahorse_pkcs11_backend_get_name (SeahorseBackend *backend)
 	return SEAHORSE_PKCS11_NAME;
 }
 
+static SeahorseBackendType
+seahorse_pkcs11_backend_get_backend_type (SeahorseBackend *backend)
+{
+	return SEAHORSE_BACKEND_TYPE_CERTIFICATES;
+}
+
 static const gchar *
 seahorse_pkcs11_backend_get_label (SeahorseBackend *backend)
 {
@@ -212,6 +219,9 @@ seahorse_pkcs11_backend_get_property (GObject *obj,
 	switch (prop_id) {
 	case PROP_NAME:
 		g_value_set_string (value, seahorse_pkcs11_backend_get_name (backend));
+		break;
+	case PROP_BACKEND_TYPE:
+		g_value_set_enum (value, seahorse_pkcs11_backend_get_backend_type (backend));
 		break;
 	case PROP_LABEL:
 		g_value_set_string (value, seahorse_pkcs11_backend_get_label (backend));
@@ -266,6 +276,7 @@ seahorse_pkcs11_backend_class_init (SeahorsePkcs11BackendClass *klass)
 	gobject_class->get_property = seahorse_pkcs11_backend_get_property;
 
 	g_object_class_override_property (gobject_class, PROP_NAME, "name");
+	g_object_class_override_property (gobject_class, PROP_BACKEND_TYPE, "backend-type");
 	g_object_class_override_property (gobject_class, PROP_LABEL, "label");
 	g_object_class_override_property (gobject_class, PROP_DESCRIPTION, "description");
 	g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
@@ -334,6 +345,7 @@ seahorse_pkcs11_backend_iface (SeahorseBackendIface *iface)
 	iface->get_description = seahorse_pkcs11_backend_get_description;
 	iface->get_label = seahorse_pkcs11_backend_get_label;
 	iface->get_name = seahorse_pkcs11_backend_get_name;
+	iface->get_backend_type = seahorse_pkcs11_backend_get_backend_type;
 }
 
 void

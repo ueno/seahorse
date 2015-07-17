@@ -29,6 +29,12 @@ public enum Usage {
 	OTHER = 10
 }
 
+public enum BackendType {
+	PASSWORDS = 0,
+	CERTIFICATES = 1,
+	KEYS = 2
+}
+
 [Flags]
 public enum Flags {
 	[CCode (cname = "SEAHORSE_FLAG_NONE")]

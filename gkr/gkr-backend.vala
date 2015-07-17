@@ -35,6 +35,10 @@ public class Backend: GLib.Object , Gcr.Collection, Seahorse.Backend {
 		get { return NAME; }
 	}
 
+	public BackendType backend_type {
+		get { return Seahorse.BackendType.PASSWORDS; }
+	}
+
 	public string label {
 		get { return _("Passwords"); }
 	}

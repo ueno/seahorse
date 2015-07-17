@@ -35,7 +35,7 @@ public class Certificate : Gck.Object, Gcr.Comparable, Gcr.Certificate,
 		get { ensure_flags(); return this._flags; }
 	}
 
-	public GLib.ActionGroup? actions {
+	public Gtk.ActionGroup? actions {
 		get { return null; }
 	}
 

@@ -26,6 +26,7 @@
 #include "seahorse-resources.h"
 
 #include "libseahorse/seahorse-application.h"
+#include "libseahorse/seahorse-prefs.h"
 #include "libseahorse/seahorse-servers.h"
 #include "libseahorse/seahorse-util.h"
 
@@ -36,6 +37,90 @@
 
 #include <locale.h>
 #include <stdlib.h>
+
+static void
+on_app_preferences (GSimpleAction *action, GVariant *parameter,
+		    gpointer user_data)
+{
+	GtkApplication *application = GTK_APPLICATION (user_data);
+	GtkWindow *window = gtk_application_get_active_window (application);
+	seahorse_prefs_show (window, NULL);
+}
+
+static void
+on_app_help (GSimpleAction *action, GVariant *parameter,
+	     gpointer user_data)
+{
+	GtkApplication *application = GTK_APPLICATION (user_data);
+	GtkWindow *window = gtk_application_get_active_window (application);
+	GError *error = NULL;
+	if (!g_app_info_launch_default_for_uri ("help:" PACKAGE_NAME, NULL,
+						&error)) {
+		seahorse_util_show_error (GTK_WIDGET (window),
+					  _("Could not display help: %s"),
+					  error->message);
+		g_error_free (error);
+	}
+}
+
+static void
+on_app_about (GSimpleAction *action, GVariant *parameter,
+	      gpointer user_data)
+{
+	GtkApplication *application = GTK_APPLICATION (user_data);
+	GtkWindow *window = gtk_application_get_active_window (application);
+
+	const gchar *authors[] = {
+		"Jacob Perkins <jap1@users.sourceforge.net>",
+		"Jose Carlos Garcia Sogo <jsogo@users.sourceforge.net>",
+		"Jean Schurger <yshark@schurger.org>",
+		"Stef Walter <stef@memberwebs.com>",
+		"Adam Schreiber <sadam@clemson.edu>",
+		"",
+		N_("Contributions:"),
+		"Albrecht Dreß <albrecht.dress@arcor.de>",
+		"Jim Pharis <binbrain@gmail.com>",
+		NULL
+	};
+
+	const gchar *documentors[] = {
+		"Jacob Perkins <jap1@users.sourceforge.net>",
+		"Adam Schreiber <sadam@clemson.edu>",
+		"Milo Casagrande <milo_casagrande@yahoo.it>",
+		NULL
+	};
+
+	const gchar *artists[] = {
+		"Jacob Perkins <jap1@users.sourceforge.net>",
+		"Stef Walter <stef@memberwebs.com>",
+		NULL
+	};
+
+	gtk_show_about_dialog (GTK_WINDOW (window),
+			       "version", PACKAGE_VERSION,
+			       "copyright", "\xc2\xa9 2002 - 2010 Seahorse Project",
+			       "website", "http://www.gnome.org/projects/seahorse",
+			       "comments", _("Passwords and Keys"),
+			       "authors", authors,
+			       "documenters", documentors,
+			       "artists", artists,
+			       "logo-icon-name", "seahorse",
+			       NULL);
+}
+
+static void
+on_app_quit (GSimpleAction *action, GVariant *parameter,
+             gpointer user_data)
+{
+	g_application_quit (G_APPLICATION (seahorse_application_get ()));
+}
+
+static const GActionEntry APPLICATION_ACTIONS[] = {
+	{ "preferences", on_app_preferences, NULL, NULL, NULL },
+	{ "help", on_app_help, NULL, NULL, NULL },
+	{ "about", on_app_about, NULL, NULL, NULL },
+	{ "quit", on_app_quit, NULL, NULL, NULL }
+};
 
 static void
 on_application_activate (GApplication *application,
@@ -54,6 +139,9 @@ static void
 on_application_startup (GApplication *application,
                         gpointer user_data)
 {
+	GtkBuilder *builder;
+	GMenuModel *appmenu;
+
 	/* Initialize the various components */
 #ifdef WITH_PGP
 	seahorse_pgp_backend_initialize ();
@@ -68,6 +156,12 @@ on_application_startup (GApplication *application,
 
 	/* Initialize the search provider now that backends are registered */
 	seahorse_application_initialize_search (SEAHORSE_APPLICATION (application));
+
+	/* Initialize the application menu */
+	builder = gtk_builder_new_from_resource ("/org/gnome/Seahorse/seahorse-key-manager.xml");
+	appmenu = G_MENU_MODEL (gtk_builder_get_object (builder, "appmenu"));
+	gtk_application_set_app_menu (GTK_APPLICATION (application), appmenu);
+	g_object_unref (builder);
 }
 
 /* Initializes context and preferences, then loads key manager */
@@ -90,6 +184,9 @@ main (int argc, char **argv)
 	seahorse_register_resource ();
 
 	application = seahorse_application_new ();
+	g_action_map_add_action_entries (G_ACTION_MAP (application),
+					 APPLICATION_ACTIONS, G_N_ELEMENTS (APPLICATION_ACTIONS),
+					 application);
 	g_signal_connect (application, "activate", G_CALLBACK (on_application_activate), NULL);
 	g_signal_connect (application, "startup", G_CALLBACK (on_application_startup), NULL);
 	status = g_application_run (G_APPLICATION (application), argc, argv);

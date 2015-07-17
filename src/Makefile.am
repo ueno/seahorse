@@ -24,7 +24,8 @@ seahorse_SOURCES = \
 	src/seahorse-import-dialog.c src/seahorse-import-dialog.h \
 	src/seahorse-key-manager.c src/seahorse-key-manager.h \
 	src/seahorse-main.c \
-	src/seahorse-sidebar.c src/seahorse-sidebar.h
+	src/seahorse-sidebar.c src/seahorse-sidebar.h \
+	src/seahorse-paned.c src/seahorse-paned.h
 
 # HACK: One day libcommon.a and libseahorse.a will be one and
 # the same. Until then specify libseahorse.a twice when linking

@@ -31,6 +31,7 @@
 enum {
 	PROP_0,
 	PROP_NAME,
+	PROP_BACKEND_TYPE,
 	PROP_LABEL,
 	PROP_DESCRIPTION,
 	PROP_ACTIONS,
@@ -109,6 +110,12 @@ seahorse_ssh_backend_get_name (SeahorseBackend *backend)
 	return SEAHORSE_SSH_NAME;
 }
 
+static SeahorseBackendType
+seahorse_ssh_backend_get_backend_type (SeahorseBackend *backend)
+{
+	return SEAHORSE_BACKEND_TYPE_KEYS;
+}
+
 static const gchar *
 seahorse_ssh_backend_get_label (SeahorseBackend *backend)
 {
@@ -138,6 +145,9 @@ seahorse_ssh_backend_get_property (GObject *obj,
 	switch (prop_id) {
 	case PROP_NAME:
 		g_value_set_string (value, seahorse_ssh_backend_get_name (backend));
+		break;
+	case PROP_BACKEND_TYPE:
+		g_value_set_enum (value, seahorse_ssh_backend_get_backend_type (backend));
 		break;
 	case PROP_LABEL:
 		g_value_set_string (value, seahorse_ssh_backend_get_label (backend));
@@ -178,6 +188,7 @@ seahorse_ssh_backend_class_init (SeahorseSshBackendClass *klass)
 	gobject_class->get_property = seahorse_ssh_backend_get_property;
 
 	g_object_class_override_property (gobject_class, PROP_NAME, "name");
+	g_object_class_override_property (gobject_class, PROP_BACKEND_TYPE, "backend-type");
 	g_object_class_override_property (gobject_class, PROP_LABEL, "label");
 	g_object_class_override_property (gobject_class, PROP_DESCRIPTION, "description");
 	g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
@@ -240,6 +251,7 @@ seahorse_ssh_backend_iface (SeahorseBackendIface *iface)
 	iface->get_description = seahorse_ssh_backend_get_description;
 	iface->get_label = seahorse_ssh_backend_get_label;
 	iface->get_name = seahorse_ssh_backend_get_name;
+	iface->get_backend_type = seahorse_ssh_backend_get_backend_type;
 }
 
 void

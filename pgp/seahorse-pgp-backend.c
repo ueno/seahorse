@@ -40,6 +40,7 @@
 enum {
 	PROP_0,
 	PROP_NAME,
+	PROP_BACKEND_TYPE,
 	PROP_LABEL,
 	PROP_DESCRIPTION,
 	PROP_ACTIONS,
@@ -187,6 +188,12 @@ seahorse_pgp_backend_get_name (SeahorseBackend *backend)
 	return SEAHORSE_PGP_NAME;
 }
 
+static SeahorseBackendType
+seahorse_pgp_backend_get_backend_type (SeahorseBackend *backend)
+{
+	return SEAHORSE_BACKEND_TYPE_KEYS;
+}
+
 static const gchar *
 seahorse_pgp_backend_get_label (SeahorseBackend *backend)
 {
@@ -225,6 +232,10 @@ seahorse_pgp_backend_included (SeahorseBackend *backend,
 				      "menubar",
 				      "remote-menu",
 				      G_MENU_MODEL (menu));
+	seahorse_catalog_update_menu (catalog,
+				      "popover",
+				      "remote-menu",
+				      G_MENU_MODEL (menu));
 	g_object_unref (menu);
 }
 
@@ -239,6 +250,9 @@ seahorse_pgp_backend_get_property (GObject *obj,
 	switch (prop_id) {
 	case PROP_NAME:
 		g_value_set_string (value,  seahorse_pgp_backend_get_name (backend));
+		break;
+	case PROP_BACKEND_TYPE:
+		g_value_set_enum (value,  seahorse_pgp_backend_get_backend_type (backend));
 		break;
 	case PROP_LABEL:
 		g_value_set_string (value,  seahorse_pgp_backend_get_label (backend));
@@ -288,6 +302,7 @@ seahorse_pgp_backend_class_init (SeahorsePgpBackendClass *klass)
 	gobject_class->get_property = seahorse_pgp_backend_get_property;
 
 	g_object_class_override_property (gobject_class, PROP_NAME, "name");
+	g_object_class_override_property (gobject_class, PROP_BACKEND_TYPE, "backend-type");
 	g_object_class_override_property (gobject_class, PROP_LABEL, "label");
 	g_object_class_override_property (gobject_class, PROP_DESCRIPTION, "description");
 	g_object_class_override_property (gobject_class, PROP_ACTIONS, "actions");
@@ -341,6 +356,7 @@ seahorse_pgp_backend_iface (SeahorseBackendIface *iface)
 	iface->get_description = seahorse_pgp_backend_get_description;
 	iface->get_label = seahorse_pgp_backend_get_label;
 	iface->get_name = seahorse_pgp_backend_get_name;
+	iface->get_backend_type = seahorse_pgp_backend_get_backend_type;
 	iface->included = seahorse_pgp_backend_included;
 }
 

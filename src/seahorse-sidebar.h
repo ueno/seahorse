@@ -38,14 +38,13 @@ typedef struct _SeahorseSidebarClass SeahorseSidebarClass;
 
 GType                        seahorse_sidebar_get_type           (void);
 
-SeahorseSidebar *            seahorse_sidebar_new                (void);
+SeahorseSidebar *            seahorse_sidebar_new                (GList *backends,
+								  GcrUnionCollection *collection);
 
 gboolean                     seahorse_sidebar_get_combined       (SeahorseSidebar *self);
 
 void                         seahorse_sidebar_set_combined       (SeahorseSidebar *self,
                                                                   gboolean combined);
-
-GcrCollection *              seahorse_sidebar_get_collection     (SeahorseSidebar *self);
 
 gchar **                     seahorse_sidebar_get_selected_uris  (SeahorseSidebar *self);
 
@@ -55,7 +54,5 @@ void                         seahorse_sidebar_set_selected_uris  (SeahorseSideba
 GList *                 seahorse_sidebar_get_selected_places     (SeahorseSidebar *self);
 
 SeahorsePlace *         seahorse_sidebar_get_focused_place       (SeahorseSidebar *self);
-
-GList *                 seahorse_sidebar_get_backends            (SeahorseSidebar *self);
 
 #endif /* __SEAHORSE_SIDEBAR_H__ */

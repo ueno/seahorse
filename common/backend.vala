@@ -20,6 +20,7 @@ namespace Seahorse {
 
 public interface Backend : Gcr.Collection {
 	public abstract string name { get; }
+	public abstract BackendType backend_type { get; }
 	public abstract string label { get; }
 	public abstract string description { get; }
 	public abstract GLib.ActionGroup actions { owned get; }

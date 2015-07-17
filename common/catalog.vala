@@ -23,6 +23,7 @@ namespace Seahorse {
 public abstract class Catalog : Gtk.Window {
 	private static const string MENU_POPUP = "popup";
 	private static const string MENU_MENUBAR = "menubar";
+	private static const string MENU_POPOVER = "popover";
 
 	/* For compatibility with old code */
 	public Gtk.Window window {
@@ -62,6 +63,9 @@ public abstract class Catalog : Gtk.Window {
 		var popup = this._builder.get_object("popup");
 		this._menus.set(MENU_POPUP, (GLib.Menu) popup);
 
+		var popover = this._builder.get_object("popover");
+		this._menus.set(MENU_POPOVER, (GLib.Menu) popover);
+
 		/* Load window size for windows that aren't dialogs */
 		var key = "/apps/seahorse/windows/%s/".printf(this.ui_name);
 		this._settings = new GLib.Settings.with_path("org.gnome.seahorse.window", key);
@@ -74,8 +78,6 @@ public abstract class Catalog : Gtk.Window {
 		var map = (GLib.ActionMap) this._actions;
 		map.add_action_entries(COMMON_ENTRIES, this);
 
-		var action = (GLib.SimpleAction) map.lookup_action("preferences");
-		action.set_enabled (Prefs.available());
 		this._edit_delete = (GLib.SimpleAction) map.lookup_action("edit-delete");
 		this._properties_object = (GLib.SimpleAction) map.lookup_action("properties-object");
 		this._edit_copy = (GLib.SimpleAction) map.lookup_action("edit-export-clipboard");
@@ -174,64 +176,6 @@ public abstract class Catalog : Gtk.Window {
 	}
 
 	[CCode (instance_pos = -1)]
-	private void on_preferences (GLib.SimpleAction action,
-								 GLib.Variant? parameter)
-	{
-		Prefs.show(this, null);
-	}
-
-	private static const string[] AUTHORS = {
-		"Jacob Perkins <jap1@users.sourceforge.net>",
-		"Jose Carlos Garcia Sogo <jsogo@users.sourceforge.net>",
-		"Jean Schurger <yshark@schurger.org>",
-		"Stef Walter <stef@memberwebs.com>",
-		"Adam Schreiber <sadam@clemson.edu>",
-		"",
-		N_("Contributions:"),
-		"Albrecht Dreß <albrecht.dress@arcor.de>",
-		"Jim Pharis <binbrain@gmail.com>",
-		null
-	};
-
-	private static const string[] DOCUMENTERS = {
-		"Jacob Perkins <jap1@users.sourceforge.net>",
-		"Adam Schreiber <sadam@clemson.edu>",
-		"Milo Casagrande <milo_casagrande@yahoo.it>",
-		null
-	};
-
-	private static const string[] ARTISTS = {
-		"Jacob Perkins <jap1@users.sourceforge.net>",
-		"Stef Walter <stef@memberwebs.com>",
-		null
-	};
-
-	[CCode (instance_pos = -1)]
-	private void on_about(GLib.SimpleAction action, GLib.Variant? parameter)
-	{
-
-		var about = new Gtk.AboutDialog();
-		about.set_artists(ARTISTS);
-		about.set_authors(AUTHORS);
-		about.set_documenters(DOCUMENTERS);
-		about.set_version(Config.VERSION);
-		about.set_comments(_("Passwords and Keys"));
-		about.set_copyright("Copyright \xc2\xa9 2002 - 2010 Seahorse Project");
-		about.set_translator_credits(_("translator-credits"));
-		about.set_logo_icon_name("seahorse");
-		about.set_website("http://www.gnome.org/projects/seahorse");
-		about.set_website_label(_("Seahorse Project Homepage"));
-
-		about.response.connect((response) => {
-			about.hide();
-		});
-
-		about.set_transient_for(this);
-		about.run();
-		about.destroy();
-	}
-
-	[CCode (instance_pos = -1)]
 	private void on_object_delete(GLib.SimpleAction action,
 								  GLib.Variant? parameter)
 	{
@@ -291,27 +235,12 @@ public abstract class Catalog : Gtk.Window {
 		board.set_text ((string)output, output.length);
 	}
 
-	[CCode (instance_pos = -1)]
-	private void on_help_show(GLib.SimpleAction action,
-							  GLib.Variant? parameter)
-	{
-		try {
-			var document = "help:%s".printf(Config.PACKAGE);
-			GLib.AppInfo.launch_default_for_uri(document, null);
-		} catch (GLib.Error err) {
-			Util.show_error(this, _("Could not display help: %s"), err.message);
-		}
-	}
-
 	private static const GLib.ActionEntry[] COMMON_ENTRIES = {
 		{ "file-export", on_key_export_file, null, null, null },
 		{ "edit-export-clipboard", on_key_export_clipboard, null, null, null },
 		{ "edit-delete", on_object_delete, null, null, null },
 		{ "properties-object", on_properties_object, null, null, null },
-		{ "properties-keyring", on_properties_place, null, null, null },
-		{ "preferences", on_preferences, null, null, null },
-		{ "about", on_about, null, null, null },
-		{ "help-show", on_help_show, null, null, null }
+		{ "properties-keyring", on_properties_place, null, null, null }
 	};
 }
 

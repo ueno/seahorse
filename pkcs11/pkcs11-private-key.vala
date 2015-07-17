@@ -35,7 +35,7 @@ public class PrivateKey : Gck.Object, Gck.ObjectCache,
 		get { return Flags.PERSONAL; }
 	}
 
-	public GLib.ActionGroup? actions {
+	public Gtk.ActionGroup? actions {
 		get { return null; }
 	}
 

@@ -34,7 +34,7 @@ struct _SeahorseSidebar {
 	GtkTreeView *tree_view;
 
 	GtkListStore *store;
-	GPtrArray *backends;
+	GList *backends;
 	GcrUnionCollection *objects;
 
 	/* The selection */
@@ -66,18 +66,13 @@ struct _SeahorseSidebarClass {
 
 enum {
 	PROP_0,
+	PROP_BACKENDS,
 	PROP_COLLECTION,
 	PROP_COMBINED,
 	PROP_SELECTED_URIS
 };
 
-typedef enum {
-	TYPE_BACKEND,
-	TYPE_PLACE,
-} RowType;
-
 enum {
-	SIDEBAR_ROW_TYPE,
 	SIDEBAR_ICON,
 	SIDEBAR_LABEL,
 	SIDEBAR_TOOLTIP,
@@ -89,7 +84,6 @@ enum {
 };
 
 static GType column_types[] = {
-	G_TYPE_UINT,
 	0 /* later */,
 	G_TYPE_STRING,
 	G_TYPE_STRING,
@@ -116,9 +110,7 @@ seahorse_sidebar_init (SeahorseSidebar *self)
 	column_types[SIDEBAR_COLLECTION] = GCR_TYPE_COLLECTION;
 	self->store = gtk_list_store_newv (SIDEBAR_N_COLUMNS, column_types);
 
-	self->backends = g_ptr_array_new_with_free_func (g_object_unref);
 	self->selection = g_hash_table_new (g_direct_hash, g_direct_equal);
-	self->objects = GCR_UNION_COLLECTION (gcr_union_collection_new ());
 	self->chosen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
 
 	self->accel_group = gtk_accel_group_new ();
@@ -252,12 +244,11 @@ next_or_append_row (GtkListStore *store,
 	/* A marker that tells us the iter is not yet valid */
 	if (iter->stamp == GPOINTER_TO_INT (iter) && iter->user_data3 == iter &&
 	    iter->user_data2 == iter && iter->user_data == iter) {
-		if (!gtk_tree_model_get_iter_first (GTK_TREE_MODEL (store), iter))
+		if (!gtk_tree_model_get_iter_first (GTK_TREE_MODEL (store), iter)) {
 			gtk_list_store_append (store, iter);
-		return;
-	}
-
-	if (!gtk_tree_model_iter_next (GTK_TREE_MODEL (store), iter)) {
+			return;
+		}
+	} else if (!gtk_tree_model_iter_next (GTK_TREE_MODEL (store), iter)) {
 		gtk_list_store_append (store, iter);
 		return;
 	}
@@ -305,22 +296,7 @@ update_backend (SeahorseSidebar *self,
 
 	g_object_get (backend,
 	              "name", &category,
-	              "label", &label,
-	              "description", &tooltip,
 	              NULL);
-
-	next_or_append_row (self->store, iter, category, GCR_COLLECTION (backend));
-	gtk_list_store_set (self->store, iter,
-	                    SIDEBAR_ROW_TYPE, TYPE_BACKEND,
-	                    SIDEBAR_CATEGORY, category,
-	                    SIDEBAR_LABEL, label,
-	                    SIDEBAR_TOOLTIP, tooltip,
-	                    SIDEBAR_EDITABLE, FALSE,
-	                    SIDEBAR_COLLECTION, backend,
-	                    -1);
-
-	g_free (label);
-	g_free (tooltip);
 
 	for (l = collections; l != NULL; l = g_list_next (l)) {
 		label = tooltip = NULL;
@@ -337,7 +313,6 @@ update_backend (SeahorseSidebar *self,
 
 		next_or_append_row (self->store, iter, category, l->data);
 		gtk_list_store_set (self->store, iter,
-		                    SIDEBAR_ROW_TYPE, TYPE_PLACE,
 		                    SIDEBAR_CATEGORY, category,
 		                    SIDEBAR_LABEL, label,
 		                    SIDEBAR_TOOLTIP, tooltip,
@@ -365,15 +340,14 @@ update_objects_in_collection (SeahorseSidebar *self,
 	gboolean have;
 	gboolean changed = FALSE;
 	gchar *uri;
-	GList *l;
-	guint i;
+	GList *l, *p;
 
 	/* Updating collection is blocked */
 	if (self->updating)
 		return;
 
-	for (i = 0; i < self->backends->len; i++) {
-		collections = gcr_collection_get_objects (self->backends->pdata[i]);
+	for (p = self->backends; p != NULL; p = g_list_next (p)) {
+		collections = gcr_collection_get_objects (p->data);
 		for (l = collections; l != NULL; l = g_list_next (l)) {
 
 			include = g_hash_table_lookup (self->selection, l->data) != NULL;
@@ -402,10 +376,10 @@ update_objects_in_collection (SeahorseSidebar *self,
 				gcr_union_collection_remove (self->objects, l->data);
 		}
 		g_list_free (collections);
-	}
 
-	if (update_chosen && changed)
-		g_object_notify (G_OBJECT (self), "selected-uris");
+		if (update_chosen && changed)
+			g_object_notify (G_OBJECT (self), "selected-uris");
+	}
 }
 
 static void
@@ -495,15 +469,15 @@ update_objects_for_chosen (SeahorseSidebar *self,
 static void
 update_places (SeahorseSidebar *self)
 {
+	GList *l;
 	GtkTreeIter iter;
-	guint i;
 
 	/* A marker that tells us the iter is not yet valid */
 	iter.stamp = GPOINTER_TO_INT (&iter);
 	iter.user_data3 = iter.user_data2 = iter.user_data = &iter;
 
-	for (i = 0; i < self->backends->len; i++)
-		update_backend (self, GCR_COLLECTION (self->backends->pdata[i]), &iter);
+	for (l = self->backends; l != NULL; l = g_list_next (l))
+		update_backend (self, GCR_COLLECTION (l->data), &iter);
 
 	/* Update selection */
 	update_objects_for_chosen (self, self->chosen);
@@ -605,82 +579,17 @@ on_cell_renderer_action_icon (GtkTreeViewColumn *column,
 }
 
 static void
-on_cell_renderer_heading_visible (GtkTreeViewColumn *column,
-                                  GtkCellRenderer *cell,
-                                  GtkTreeModel *model,
-                                  GtkTreeIter *iter,
-                                  gpointer user_data)
-{
-	RowType type;
-	gtk_tree_model_get (model, iter,
-	                    SIDEBAR_ROW_TYPE, &type,
-	                    -1);
-	g_object_set (cell,
-	              "visible", (type == TYPE_BACKEND),
-	              NULL);
-}
-
-static void
 on_padding_cell_renderer (GtkTreeViewColumn *column,
                           GtkCellRenderer *cell,
                           GtkTreeModel *model,
                           GtkTreeIter *iter,
                           gpointer user_data)
 {
-	RowType type;
-	gtk_tree_model_get (model, iter,
-	                    SIDEBAR_ROW_TYPE, &type,
-	                    -1);
-
-	if (type == TYPE_BACKEND) {
-		g_object_set (cell,
-		              "visible", FALSE,
-		              "xpad", 0,
-		              "ypad", 0,
-		              NULL);
-	} else {
-		g_object_set (cell,
-		              "visible", TRUE,
-		              "xpad", 3,
-		              "ypad", 3,
-		              NULL);
-	}
-}
-
-static void
-on_cell_renderer_heading_not_visible (GtkTreeViewColumn *column,
-                                      GtkCellRenderer *cell,
-                                      GtkTreeModel *model,
-                                      GtkTreeIter *iter,
-                                      gpointer user_data)
-{
-	RowType type;
-	gtk_tree_model_get (model, iter,
-	                    SIDEBAR_ROW_TYPE, &type,
-	                    -1);
 	g_object_set (cell,
-	              "visible", (type != TYPE_BACKEND),
-	              NULL);
-}
-
-static gboolean
-on_tree_selection_validate (GtkTreeSelection *selection,
-                            GtkTreeModel *model,
-                            GtkTreePath *path,
-                            gboolean path_currently_selected,
-                            gpointer user_data)
-{
-	GtkTreeIter iter;
-	RowType row_type;
-
-	gtk_tree_model_get_iter (model, &iter, path);
-	gtk_tree_model_get (model, &iter,
-	                    SIDEBAR_ROW_TYPE, &row_type,
-	                    -1);
-	if (row_type == TYPE_BACKEND)
-		return FALSE;
-
-	return TRUE;
+		      "visible", TRUE,
+		      "xpad", 3,
+		      "ypad", 3,
+		      NULL);
 }
 
 static void
@@ -729,49 +638,14 @@ on_place_removed (GcrCollection *places,
 	update_places_later (self);
 }
 
-static gint
-order_from_backend (GObject *backend)
-{
-	gchar *name;
-	gint order;
-
-	g_object_get (backend, "name", &name, NULL);
-
-	if (name == NULL)
-		order = 10;
-	else if (g_str_equal (name, "gkr"))
-		order = 0;
-	else if (g_str_equal (name, "pgp"))
-		order = 1;
-	else if (g_str_equal (name, "pkcs11"))
-		order = 2;
-	else if (g_str_equal (name, "ssh"))
-		order = 3;
-	else
-		order = 10;
-
-	g_free (name);
-	return order;
-}
-
-static gint
-on_sort_backends (gconstpointer a,
-                  gconstpointer b)
-{
-	gint ordera = order_from_backend (G_OBJECT (*((gpointer *)a)));
-	gint orderb = order_from_backend (G_OBJECT (*((gpointer *)b)));
-	return ordera - orderb;
-}
-
 static void
 load_backends (SeahorseSidebar *self)
 {
-	GList *backends, *l;
-	GList *places, *p;
+	GList *l;
 
-	backends = seahorse_backend_get_registered ();
-	for (l = backends; l != NULL; l = g_list_next (l)) {
-		g_ptr_array_add (self->backends, l->data);
+	for (l = self->backends; l != NULL; l = g_list_next (l)) {
+		GList *places, *p;
+
 		g_signal_connect (l->data, "added", G_CALLBACK (on_place_added), self);
 		g_signal_connect (l->data, "removed", G_CALLBACK (on_place_removed), self);
 		g_signal_connect (l->data, "notify", G_CALLBACK (on_backend_changed), self);
@@ -781,8 +655,6 @@ load_backends (SeahorseSidebar *self)
 			on_place_added (l->data, p->data, self);
 		g_list_free (places);
 	}
-	g_ptr_array_sort (self->backends, on_sort_backends);
-	g_list_free (backends);
 }
 
 static void
@@ -1225,22 +1097,6 @@ seahorse_sidebar_constructed (GObject *obj)
 	              "xpad", 6,
 	              NULL);
 
-	/* headings */
-	cell = gtk_cell_renderer_text_new ();
-	gtk_tree_view_column_pack_start (col, cell, FALSE);
-	gtk_tree_view_column_set_attributes (col, cell,
-	                                     "text", SIDEBAR_LABEL,
-	                                     NULL);
-	g_object_set (cell,
-	              "weight", PANGO_WEIGHT_BOLD,
-	              "weight-set", TRUE,
-	              "ypad", 6,
-	              "xpad", 0,
-	              NULL);
-	gtk_tree_view_column_set_cell_data_func (col, cell,
-	                                         on_cell_renderer_heading_visible,
-	                                         self, NULL);
-
 	/* icon padding */
 	cell = gtk_cell_renderer_text_new ();
 	gtk_tree_view_column_pack_start (col, cell, FALSE);
@@ -1254,9 +1110,6 @@ seahorse_sidebar_constructed (GObject *obj)
 	gtk_tree_view_column_set_attributes (col, cell,
 	                                     "gicon", SIDEBAR_ICON,
 	                                     NULL);
-	gtk_tree_view_column_set_cell_data_func (col, cell,
-	                                         on_cell_renderer_heading_not_visible,
-	                                         self, NULL);
 
 	/* normal text renderer */
 	cell = gtk_cell_renderer_text_new ();
@@ -1265,9 +1118,6 @@ seahorse_sidebar_constructed (GObject *obj)
 	gtk_tree_view_column_set_attributes (col, cell,
 	                                     "text", SIDEBAR_LABEL,
 	                                     NULL);
-	gtk_tree_view_column_set_cell_data_func (col, cell,
-	                                         on_cell_renderer_heading_not_visible,
-	                                         self, NULL);
 	g_object_set (cell,
 	              "ellipsize", PANGO_ELLIPSIZE_END,
 	              "ellipsize-set", TRUE,
@@ -1304,7 +1154,6 @@ seahorse_sidebar_constructed (GObject *obj)
 
 	selection = gtk_tree_view_get_selection (tree_view);
 	gtk_tree_selection_set_mode (selection, GTK_SELECTION_MULTIPLE);
-	gtk_tree_selection_set_select_function (selection, on_tree_selection_validate, self, NULL);
 	g_signal_connect (selection, "changed", G_CALLBACK (on_tree_selection_changed), self);
 
 
@@ -1320,9 +1169,6 @@ seahorse_sidebar_get_property (GObject *obj,
 	SeahorseSidebar *self = SEAHORSE_SIDEBAR (obj);
 
 	switch (prop_id) {
-	case PROP_COLLECTION:
-		g_value_set_object (value, seahorse_sidebar_get_collection (self));
-		break;
 	case PROP_COMBINED:
 		g_value_set_boolean (value, seahorse_sidebar_get_combined (self));
 		break;
@@ -1344,6 +1190,12 @@ seahorse_sidebar_set_property (GObject *obj,
 	SeahorseSidebar *self = SEAHORSE_SIDEBAR (obj);
 
 	switch (prop_id) {
+	case PROP_BACKENDS:
+		self->backends = g_list_copy (g_value_get_pointer (value));
+		break;
+	case PROP_COLLECTION:
+		self->objects = g_value_dup_object (value);
+		break;
 	case PROP_COMBINED:
 		seahorse_sidebar_set_combined (self, g_value_get_boolean (value));
 		break;
@@ -1360,17 +1212,18 @@ static void
 seahorse_sidebar_dispose (GObject *obj)
 {
 	SeahorseSidebar *self = SEAHORSE_SIDEBAR (obj);
-	GList *places, *l;
-	guint i;
+	GList *l;
 
-	for (i = 0; i < self->backends->len; i++) {
-		g_signal_handlers_disconnect_by_func (self->backends->pdata[i], on_place_added, self);
-		g_signal_handlers_disconnect_by_func (self->backends->pdata[i], on_place_removed, self);
-		g_signal_handlers_disconnect_by_func (self->backends->pdata[i], on_backend_changed, self);
+	for (l = self->backends; l != NULL; l = g_list_next (l)) {
+		GList *places, *p;
 
-		places = gcr_collection_get_objects (self->backends->pdata[i]);
-		for (l = places; l != NULL; l = g_list_next (l))
-			on_place_removed (self->backends->pdata[i], l->data, self);
+		g_signal_handlers_disconnect_by_func (l->data, on_place_added, self);
+		g_signal_handlers_disconnect_by_func (l->data, on_place_removed, self);
+		g_signal_handlers_disconnect_by_func (l->data, on_backend_changed, self);
+
+		places = gcr_collection_get_objects (l->data);
+		for (p = places; p != NULL; p = g_list_next (p))
+			on_place_removed (l->data, p->data, self);
 		g_list_free (places);
 	}
 
@@ -1391,7 +1244,7 @@ seahorse_sidebar_finalize (GObject *obj)
 	if (self->update_places_sig)
 		g_source_remove (self->update_places_sig);
 
-	g_ptr_array_unref (self->backends);
+	g_list_free (self->backends);
 	g_object_unref (self->store);
 
 	if (self->action_highlight_path)
@@ -1413,9 +1266,13 @@ seahorse_sidebar_class_init (SeahorseSidebarClass *klass)
 	gobject_class->get_property = seahorse_sidebar_get_property;
 	gobject_class->set_property = seahorse_sidebar_set_property;
 
+	g_object_class_install_property (gobject_class, PROP_BACKENDS,
+	        g_param_spec_pointer ("backends", "Backends", "Backends",
+				      G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY));
+
 	g_object_class_install_property (gobject_class, PROP_COLLECTION,
 	        g_param_spec_object ("collection", "Collection", "Collection of objects sidebar represents",
-	                             GCR_TYPE_COLLECTION, G_PARAM_READABLE));
+	                             GCR_TYPE_UNION_COLLECTION, G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY));
 
 	g_object_class_install_property (gobject_class, PROP_COMBINED,
 	        g_param_spec_boolean ("combined", "Combined", "Collection shows all objects combined",
@@ -1431,17 +1288,13 @@ seahorse_sidebar_class_init (SeahorseSidebarClass *klass)
 }
 
 SeahorseSidebar *
-seahorse_sidebar_new (void)
+seahorse_sidebar_new (GList *backends,
+		      GcrUnionCollection *collection)
 {
 	return g_object_new (SEAHORSE_TYPE_SIDEBAR,
+			     "backends", backends,
+			     "collection", collection,
 	                     NULL);
-}
-
-GcrCollection *
-seahorse_sidebar_get_collection (SeahorseSidebar *self)
-{
-	g_return_val_if_fail (SEAHORSE_IS_SIDEBAR (self), NULL);
-	return GCR_COLLECTION (self->objects);
 }
 
 gboolean
@@ -1504,7 +1357,6 @@ seahorse_sidebar_get_selected_places (SeahorseSidebar *self)
 {
 	GcrCollection *collection;
 	GtkTreePath *path;
-	RowType row_type;
 	GtkTreeIter iter;
 	GList *places;
 
@@ -1517,15 +1369,12 @@ seahorse_sidebar_get_selected_places (SeahorseSidebar *self)
 		if (!gtk_tree_model_get_iter (GTK_TREE_MODEL (self->store), &iter, path))
 			g_return_val_if_reached (NULL);
 		gtk_tree_model_get (GTK_TREE_MODEL (self->store), &iter,
-		                    SIDEBAR_ROW_TYPE, &row_type,
 		                    SIDEBAR_COLLECTION, &collection,
 		                    -1);
 
 		if (collection != NULL) {
-			if (row_type == TYPE_PLACE) {
-				places = g_list_remove (places, collection);
-				places = g_list_prepend (places, collection);
-			}
+			places = g_list_remove (places, collection);
+			places = g_list_prepend (places, collection);
 			g_object_unref (collection);
 		}
 
@@ -1541,7 +1390,6 @@ seahorse_sidebar_get_focused_place (SeahorseSidebar *self)
 	GcrCollection *collection;
 	GtkTreePath *path;
 	GtkTreeIter iter;
-	RowType row_type;
 
 	g_return_val_if_fail (SEAHORSE_IS_SIDEBAR (self), NULL);
 
@@ -1552,53 +1400,11 @@ seahorse_sidebar_get_focused_place (SeahorseSidebar *self)
 		gtk_tree_path_free (path);
 
 		gtk_tree_model_get (GTK_TREE_MODEL (self->store), &iter,
-		                    SIDEBAR_ROW_TYPE, &row_type,
 		                    SIDEBAR_COLLECTION, &collection,
 		                    -1);
 
-		if (row_type == TYPE_PLACE)
-			return SEAHORSE_PLACE (collection);
+		return SEAHORSE_PLACE (collection);
 	}
 
 	return NULL;
-}
-
-GList *
-seahorse_sidebar_get_backends (SeahorseSidebar *self)
-{
-	GList *backends = NULL;
-	GcrCollection *collection;
-	GtkTreePath *path;
-	RowType row_type;
-	GtkTreeIter iter;
-	guint i;
-
-	g_return_val_if_fail (SEAHORSE_IS_SIDEBAR (self), NULL);
-
-	for (i = 0; i < self->backends->len; i++)
-		backends = g_list_prepend (backends, self->backends->pdata[i]);
-
-	backends = g_list_reverse (backends);
-
-	gtk_tree_view_get_cursor (self->tree_view, &path, NULL);
-	if (path != NULL) {
-		if (!gtk_tree_model_get_iter (GTK_TREE_MODEL (self->store), &iter, path))
-			g_return_val_if_reached (NULL);
-		gtk_tree_model_get (GTK_TREE_MODEL (self->store), &iter,
-		                    SIDEBAR_ROW_TYPE, &row_type,
-		                    SIDEBAR_COLLECTION, &collection,
-		                    -1);
-
-		if (collection != NULL) {
-			if (row_type == TYPE_BACKEND) {
-				backends = g_list_remove (backends, collection);
-				backends = g_list_prepend (backends, collection);
-			}
-			g_object_unref (collection);
-		}
-
-		gtk_tree_path_free (path);
-	}
-
-	return backends;
 }

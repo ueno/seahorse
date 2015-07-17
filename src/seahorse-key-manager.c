@@ -23,14 +23,13 @@
 
 #include "libseahorse/seahorse-application.h"
 #include "libseahorse/seahorse-collection.h"
-#include "libseahorse/seahorse-key-manager-store.h"
 #include "libseahorse/seahorse-progress.h"
 #include "libseahorse/seahorse-util.h"
 
 #include "seahorse-generate-select.h"
 #include "seahorse-import-dialog.h"
 #include "seahorse-key-manager.h"
-#include "seahorse-sidebar.h"
+#include "seahorse-paned.h"
 
 #include <glib/gi18n.h>
 
@@ -40,19 +39,20 @@ enum {
 	SHOW_TRUSTED,
 };
 
+enum {
+	PROP_0,
+	PROP_SEARCH_ACTIVE
+};
+
 struct _SeahorseKeyManagerPrivate {
 	GSimpleAction *show_action;
 	GtkEntry* filter_entry;
-	SeahorsePredicate pred;
-	SeahorseSidebar *sidebar;
-
-	GtkTreeView* view;
-	GcrCollection *collection; /* owned by the sidebar */
-	SeahorseKeyManagerStore* store;
+	GtkStack *stack;
 
 	GSettings *settings;
 	gint sidebar_width;
 	guint sidebar_width_sig;
+	gboolean search_active;
 };
 
 enum  {
@@ -66,68 +66,6 @@ G_DEFINE_TYPE (SeahorseKeyManager, seahorse_key_manager, SEAHORSE_TYPE_CATALOG);
  * INTERNAL 
  */
 
-static gboolean 
-fire_selection_changed (gpointer user_data)
-{
-	SeahorseKeyManager* self = SEAHORSE_KEY_MANAGER (user_data);
-
-	/* Fire the signal */
-	g_signal_emit_by_name (self, "selection-changed");
-	
-	/* This is called as a one-time idle handler, return FALSE so we don't get run again */
-	return FALSE;
-}
-
-static void 
-on_view_selection_changed (GtkTreeSelection* selection, SeahorseKeyManager* self) 
-{
-	g_return_if_fail (SEAHORSE_IS_KEY_MANAGER (self));
-	g_return_if_fail (GTK_IS_TREE_SELECTION (selection));
-	g_idle_add ((GSourceFunc)fire_selection_changed, self);
-}
-
-static void
-on_keymanager_row_activated (GtkTreeView* view, GtkTreePath* path, 
-                                  GtkTreeViewColumn* column, SeahorseKeyManager* self) 
-{
-	GObject* obj;
-
-	g_return_if_fail (SEAHORSE_IS_KEY_MANAGER (self));
-	g_return_if_fail (GTK_IS_TREE_VIEW (view));
-	g_return_if_fail (path != NULL);
-	g_return_if_fail (GTK_IS_TREE_VIEW_COLUMN (column));
-	
-	obj = seahorse_key_manager_store_get_object_from_path (view, path);
-	if (obj != NULL)
-		seahorse_catalog_show_properties (SEAHORSE_CATALOG (self), obj);
-}
-
-static gboolean
-on_keymanager_key_list_button_pressed (GtkTreeView* view, GdkEventButton* event, SeahorseKeyManager* self) 
-{
-	g_return_val_if_fail (SEAHORSE_IS_KEY_MANAGER (self), FALSE);
-	g_return_val_if_fail (GTK_IS_TREE_VIEW (view), FALSE);
-	
-	if (event->button == 3)
-		seahorse_catalog_show_object_menu (SEAHORSE_CATALOG (self),
-						   event->button, event->time);
-
-	return FALSE;
-}
-
-static gboolean
-on_keymanager_key_list_popup_menu (GtkTreeView* view, SeahorseKeyManager* self) 
-{
-	GList *objects;
-
-	objects = seahorse_catalog_get_selected_objects (SEAHORSE_CATALOG (self));
-	if (objects != NULL)
-		seahorse_catalog_show_object_menu (SEAHORSE_CATALOG (self),
-		                                   0, gtk_get_current_event_time ());
-	g_list_free (objects);
-	return FALSE;
-}
-
 static void 
 on_file_new (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
@@ -137,6 +75,7 @@ on_file_new (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 	seahorse_generate_select_show (seahorse_catalog_get_window (SEAHORSE_CATALOG (self)));
 }
 
+#if REFACTOR_FIRST
 static void
 on_keymanager_new_button (GtkButton* button, SeahorseKeyManager* self) 
 {
@@ -144,6 +83,7 @@ on_keymanager_new_button (GtkButton* button, SeahorseKeyManager* self)
 	g_return_if_fail (GTK_IS_BUTTON (button));
 	seahorse_generate_select_show (seahorse_catalog_get_window (SEAHORSE_CATALOG (self)));
 }
+#endif
 
 #if REFACTOR_FIRST
 static gboolean 
@@ -167,49 +107,21 @@ on_first_timer (SeahorseKeyManager* self)
 }
 #endif
 
-static void
-on_clear_clicked (GtkEntry* entry,
-                  GtkEntryIconPosition icon_pos,
-                  GdkEvent* event,
-                  gpointer user_data)
-{
-	gtk_entry_set_text (entry, "");
-}
-
 static void 
 on_filter_changed (GtkEntry* entry,
                    SeahorseKeyManager* self)
 {
 	const gchar *text;
+	GtkWidget *widget;
 
 	g_return_if_fail (SEAHORSE_IS_KEY_MANAGER (self));
 	g_return_if_fail (GTK_IS_ENTRY (entry));
 
+	widget = gtk_stack_get_visible_child (self->pv->stack);
+	g_return_if_fail (widget != NULL);
+
 	text = gtk_entry_get_text (entry);
-	g_object_set (self->pv->store, "filter", text, NULL);
-
-	if (text == NULL || g_str_equal (text, "")) {
-		g_object_set (G_OBJECT (entry),
-		              "secondary-icon-name", "edit-find-symbolic",
-		              "secondary-icon-activatable", FALSE,
-		              "secondary-icon-sensitive", FALSE,
-		              NULL);
-	} else {
-		g_object_set (G_OBJECT (entry),
-		              "secondary-icon-name", "edit-clear-symbolic",
-		              "secondary-icon-activatable", TRUE,
-		              "secondary-icon-sensitive", TRUE,
-		              NULL);
-	}
-}
-
-static gboolean
-on_start_interactive_search (GtkTreeView *treeview,
-                             gpointer user_data)
-{
-	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
-	gtk_widget_grab_focus (GTK_WIDGET (self->pv->filter_entry));
-	return FALSE;
+	seahorse_paned_set_filter_text (SEAHORSE_PANED (widget), text);
 }
 
 static void 
@@ -310,6 +222,7 @@ on_key_import_file (GSimpleAction *action, GVariant *parameter, gpointer user_da
 	import_prompt (self);
 }
 
+#if REFACTOR_FIRST
 static void
 on_keymanager_import_button (GtkButton* button, SeahorseKeyManager* self) 
 {
@@ -317,6 +230,7 @@ on_keymanager_import_button (GtkButton* button, SeahorseKeyManager* self)
 	g_return_if_fail (GTK_IS_BUTTON (button));
 	import_prompt (self);
 }
+#endif
 
 static void 
 import_text (SeahorseKeyManager* self,
@@ -433,17 +347,22 @@ update_view_filter (SeahorseKeyManager *self)
 {
 	GVariant *state;
 	const gchar *value;
+	GtkWidget *widget;
+	SeahorseFlags flags;
+
+	widget = gtk_stack_get_visible_child (self->pv->stack);
+	g_return_if_fail (widget != NULL);
 
 	state = g_action_get_state (G_ACTION (self->pv->show_action));
 	value = g_variant_get_string (state, NULL);
 	if (strcmp (value, "personal") == 0)
-		self->pv->pred.flags = SEAHORSE_FLAG_PERSONAL;
+		flags = SEAHORSE_FLAG_PERSONAL;
 	else if (strcmp (value, "trusted") == 0)
-		self->pv->pred.flags = SEAHORSE_FLAG_TRUSTED;
+		flags = SEAHORSE_FLAG_TRUSTED;
 	else
-		self->pv->pred.flags = 0;
+		flags = 0;
 
-	seahorse_key_manager_store_refilter (self->pv->store);
+	seahorse_paned_set_filter_flags (SEAHORSE_PANED (widget), flags);
 }
 
 
@@ -480,6 +399,15 @@ on_item_filter_changed (GSettings *settings,
 	update_view_filter (self);
 }
 
+static void
+on_visible_child_changed (GObject    *gobject,
+			  GParamSpec *pspec,
+			  gpointer    user_data)
+{
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
+	update_view_filter (self);
+}
+
 static const GActionEntry GENERAL_ACTIONS[] = {
 	{ "quit", on_app_quit, NULL, NULL, NULL },
 	{ "file-new", on_file_new, NULL, NULL, NULL },
@@ -494,14 +422,20 @@ static GList *
 seahorse_key_manager_get_selected_objects (SeahorseCatalog *catalog)
 {
 	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (catalog);
-	return seahorse_key_manager_store_get_selected_objects (self->pv->view);
+	GtkWidget *widget;
+	widget = gtk_stack_get_visible_child (self->pv->stack);
+	g_return_val_if_fail (widget != NULL, NULL);
+	return seahorse_paned_get_selected_objects (SEAHORSE_PANED (widget));
 }
 
 static SeahorsePlace *
 seahorse_key_manager_get_focused_place (SeahorseCatalog *catalog)
 {
 	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (catalog);
-	return seahorse_sidebar_get_focused_place (self->pv->sidebar);
+	GtkWidget *widget;
+	widget = gtk_stack_get_visible_child (self->pv->stack);
+	g_return_val_if_fail (widget != NULL, NULL);
+	return seahorse_paned_get_focused_place (SEAHORSE_PANED (widget));
 }
 
 static gboolean
@@ -530,78 +464,129 @@ on_panes_unrealize (GtkWidget *widget,
 	return FALSE;
 }
 
-static void
-on_sidebar_popup_menu (SeahorseSidebar *sidebar,
-                       GcrCollection *collection,
-                       gpointer user_data)
+static gint
+order_from_backend (GObject *backend)
 {
-	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
+	gchar *name;
+	gint order;
 
-	seahorse_catalog_show_collection_menu (SEAHORSE_CATALOG (self),
-					       collection,
-					       0,
-					       gtk_get_current_event_time ());
+	g_object_get (backend, "name", &name, NULL);
+
+	if (name == NULL)
+		order = 10;
+	else if (g_str_equal (name, "gkr"))
+		order = 0;
+	else if (g_str_equal (name, "pgp"))
+		order = 1;
+	else if (g_str_equal (name, "pkcs11"))
+		order = 2;
+	else if (g_str_equal (name, "ssh"))
+		order = 3;
+	else
+		order = 10;
+
+	g_free (name);
+	return order;
 }
 
-static GcrCollection *
-setup_sidebar (SeahorseKeyManager *self)
+static gint
+on_sort_backends (gconstpointer a,
+                  gconstpointer b)
 {
-	GtkWidget *area, *panes;
-	GActionGroup *actions;
-	GList *backends, *l;
-	GtkBuilder *builder;
+	gint ordera = order_from_backend (G_OBJECT (a));
+	gint orderb = order_from_backend (G_OBJECT (b));
+	return ordera - orderb;
+}
 
-	self->pv->sidebar = seahorse_sidebar_new ();
+static void
+insert_actions (gpointer data, gpointer user_data)
+{
+	SeahorseBackend *backend = SEAHORSE_BACKEND (data);
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (user_data);
+	gchar *name;
+	GActionGroup *actions = NULL;
+	g_object_get (backend, "name", &name, "actions", &actions, NULL);
 
-	self->pv->sidebar_width = g_settings_get_int (self->pv->settings, "sidebar-width");
-	builder = seahorse_catalog_get_builder (SEAHORSE_CATALOG (self));
-	panes = GTK_WIDGET (gtk_builder_get_object (builder, "sidebar-panes"));
+	if (actions != NULL) {
+		g_object_set_data (G_OBJECT (actions),
+				   "seahorse-action-catalog",
+				   self);
+		gtk_widget_insert_action_group (GTK_WIDGET (self),
+						name,
+						actions);
+		g_object_unref (actions);
+	}
+	g_signal_emit_by_name (backend,
+			       "included",
+			       SEAHORSE_CATALOG (self));
+	g_free (name);
+}
+
+static void
+setup_group (SeahorseKeyManager *self,
+	     const gchar *name,
+	     const gchar *description,
+	     GList *backends)
+{
+	SeahorsePaned *panes;
+
+	g_list_foreach (backends, insert_actions, self);
+	panes = seahorse_paned_new (backends);
+
 	gtk_paned_set_position (GTK_PANED (panes), self->pv->sidebar_width);
 	g_signal_connect (panes, "realize", G_CALLBACK (on_panes_realize), self);
 	g_signal_connect (panes, "unrealize", G_CALLBACK (on_panes_unrealize), self);
-	g_signal_connect (self->pv->sidebar, "context-menu", G_CALLBACK (on_sidebar_popup_menu), self);
 
 	gtk_widget_set_size_request (gtk_paned_get_child1 (GTK_PANED (panes)), 50, -1);
 	gtk_widget_set_size_request (gtk_paned_get_child2 (GTK_PANED (panes)), 150, -1);
 
-	backends = seahorse_sidebar_get_backends (self->pv->sidebar);
-	for (l = backends; l != NULL; l = g_list_next (l)) {
-		gchar *name;
-		actions = NULL;
-		g_object_get (l->data,
-			      "name", &name,
-			      "actions", &actions,
-			      NULL);
-		if (actions != NULL) {
-			g_object_set_data (G_OBJECT (actions),
-					   "seahorse-action-catalog",
-					   self);
-			gtk_widget_insert_action_group (GTK_WIDGET (self),
-							name,
-							actions);
-			g_object_unref (actions);
-		}
-		g_signal_emit_by_name (l->data,
-				       "included",
-				       SEAHORSE_CATALOG (self));
-		g_free (name);
+	gtk_stack_add_titled (self->pv->stack, GTK_WIDGET (panes), name, description);
+}
+
+static void
+group_backends (gpointer data, gpointer user_data)
+{
+	SeahorseBackend *backend = SEAHORSE_BACKEND (data);
+	GHashTable *groups = user_data;
+	SeahorseBackendType type = seahorse_backend_get_backend_type (backend);
+	GList *backends = g_hash_table_lookup (groups, GINT_TO_POINTER (type));
+
+	g_hash_table_insert (groups, GINT_TO_POINTER (type), g_list_append (backends, backend));
+}
+
+static void
+setup_backends (SeahorseKeyManager *self)
+{
+	GHashTable *groups;
+	GList *backends;
+	GEnumClass *enum_class = g_type_class_ref (SEAHORSE_TYPE_BACKEND_TYPE);
+	SeahorseBackendType type;
+	const gchar *group_descriptions[] = {
+		N_("Passwords"),
+		N_("Certificates"),
+		N_("Keys")
+	};
+
+	groups = g_hash_table_new (g_direct_hash, g_direct_equal);
+	backends = seahorse_backend_get_registered ();
+	g_list_foreach (backends, group_backends, groups);
+
+	for (type = enum_class->minimum; type <= enum_class->maximum; type++) {
+		GList *backends = g_hash_table_lookup (groups, GINT_TO_POINTER (type));
+		const gchar *name;
+		const gchar *description;
+
+		name = enum_class->values[type].value_nick;
+
+		g_assert (type < G_N_ELEMENTS (group_descriptions));
+		description = _(group_descriptions[type]);
+
+		backends = g_list_sort (backends, on_sort_backends);
+		setup_group (self, name, description, backends);
 	}
-
-	area = GTK_WIDGET (gtk_builder_get_object (builder, "sidebar-area"));
-	gtk_container_add (GTK_CONTAINER (area), GTK_WIDGET (self->pv->sidebar));
-	gtk_widget_show (GTK_WIDGET (self->pv->sidebar));
-	g_settings_bind (self->pv->settings, "sidebar-visible",
-	                 area, "visible",
-	                 G_SETTINGS_BIND_DEFAULT);
-	g_settings_bind (self->pv->settings, "sidebar-visible",
-	                 self->pv->sidebar, "combined",
-	                 G_SETTINGS_BIND_INVERT_BOOLEAN);
-
-	g_settings_bind (self->pv->settings, "keyrings-selected",
-	                 self->pv->sidebar, "selected-uris",
-	                 G_SETTINGS_BIND_DEFAULT);
-
-	return seahorse_sidebar_get_collection (self->pv->sidebar);
+	g_list_free (backends);
+	g_hash_table_destroy (groups);
+	g_type_class_unref (enum_class);
 }
 
 static void
@@ -610,37 +595,33 @@ seahorse_key_manager_constructed (GObject *object)
 	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (object);
 	GActionGroup* actions;
 	GtkTargetList* targets;
-	GtkTreeSelection *selection;
 	GAction *action;
 	GtkWindow *window;
 	GtkBuilder *builder;
 	GtkClipboard* clipboard;
 	GtkWidget *widget;
+	GtkHeaderBar *headerbar;
+	GtkWidget *popover;
 
 	G_OBJECT_CLASS (seahorse_key_manager_parent_class)->constructed (object);
+
+	builder = seahorse_catalog_get_builder (SEAHORSE_CATALOG (self));
+	self->pv->stack = GTK_STACK (gtk_builder_get_object (builder, "stack"));
+	self->pv->sidebar_width = g_settings_get_int (self->pv->settings, "sidebar-width");
+
+	setup_backends (self);
+	gtk_widget_show (GTK_WIDGET (self->pv->stack));
 
 	window = seahorse_catalog_get_window (SEAHORSE_CATALOG (self));
 	gtk_window_set_default_geometry(window, 640, 476);
 	gtk_widget_set_events (GTK_WIDGET (window), GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
 	gtk_window_set_title (seahorse_catalog_get_window (SEAHORSE_CATALOG (self)), _("Passwords and Keys"));
-
-	self->pv->collection = setup_sidebar (self);
-
-	/* Init key list & selection settings */
-	builder = seahorse_catalog_get_builder (SEAHORSE_CATALOG (self));
-	self->pv->view = GTK_TREE_VIEW (gtk_builder_get_object (builder, "key-list"));
-	g_return_if_fail (self->pv->view != NULL);
-
-	selection = gtk_tree_view_get_selection (self->pv->view);
-	gtk_tree_selection_set_mode (selection, GTK_SELECTION_MULTIPLE);
-	g_signal_connect (selection, "changed", G_CALLBACK (on_view_selection_changed), self);
-	gtk_widget_realize (GTK_WIDGET (self->pv->view));
-
-	/* Add new key store and associate it */
-	self->pv->store = seahorse_key_manager_store_new (self->pv->collection,
-	                                                  self->pv->view,
-	                                                  &self->pv->pred,
-	                                                  self->pv->settings);
+	headerbar = GTK_HEADER_BAR (gtk_builder_get_object (builder, "headerbar"));
+	gtk_window_set_titlebar (window, GTK_WIDGET (headerbar));
+	widget = gtk_stack_switcher_new ();
+	gtk_stack_switcher_set_stack (GTK_STACK_SWITCHER (widget), self->pv->stack);
+	gtk_widget_show (widget);
+	gtk_header_bar_set_custom_title (headerbar, widget);
 
 	g_object_get (self, "actions", &actions, NULL);
 	g_action_map_add_action_entries (G_ACTION_MAP (actions),
@@ -659,13 +640,17 @@ seahorse_key_manager_constructed (GObject *object)
 	g_signal_connect_object (self->pv->settings, "changed::item-filter",
 	                         G_CALLBACK (on_item_filter_changed), self, 0);
 	on_item_filter_changed (self->pv->settings, "item-filter", self);
+	g_signal_connect_object (self->pv->stack, "notify::visible-child",
+	                         G_CALLBACK (on_visible_child_changed), self, 0);
 
+#if REFACTOR_FIRST
 	/* first time signals */
 	g_signal_connect_object (gtk_builder_get_object (builder, "import-button"),
 	                         "clicked", G_CALLBACK (on_keymanager_import_button), self, 0);
 
 	g_signal_connect_object (gtk_builder_get_object (builder, "new-button"),
 	                         "clicked", G_CALLBACK (on_keymanager_new_button), self, 0);
+#endif
 
 	/* Make sure import is only available with clipboard content */
 	clipboard = gtk_clipboard_get(GDK_SELECTION_PRIMARY);
@@ -680,29 +665,32 @@ seahorse_key_manager_constructed (GObject *object)
 		gtk_widget_show_all (menubar);
 	}
 
-	/* Find the toolbar */
-	widget = GTK_WIDGET (gtk_builder_get_object (builder, "new-object-button"));
-	gtk_actionable_set_action_name (GTK_ACTIONABLE (widget), "app.new-object");
-	gtk_widget_set_tooltip_text (widget, _("Add a new key or item"));
-	self->pv->filter_entry = GTK_ENTRY (gtk_builder_get_object (builder, "filter-entry"));
-	on_filter_changed (self->pv->filter_entry, self);
-	gtk_entry_set_width_chars (self->pv->filter_entry, 30);
-	g_signal_connect (self->pv->filter_entry, "icon-release",
-	                  G_CALLBACK (on_clear_clicked), NULL);
+	/* Find the menubutton */
+	widget = GTK_WIDGET (gtk_builder_get_object (builder, "menu-button"));
+	popover = gtk_popover_new_from_model (widget, G_MENU_MODEL (gtk_builder_get_object (builder, "popover")));
+	gtk_menu_button_set_popover (GTK_MENU_BUTTON (widget), popover);
 
-	/* For the filtering */
+	/* For filtering */
+	self->pv->filter_entry = GTK_ENTRY (gtk_builder_get_object (builder, "filter-entry"));
+	gtk_widget_show (GTK_WIDGET (self->pv->filter_entry));
+	on_filter_changed (self->pv->filter_entry, self);
+	gtk_entry_set_width_chars (self->pv->filter_entry, 45);
+
 	g_signal_connect_object (GTK_EDITABLE (self->pv->filter_entry), "changed", 
 	                         G_CALLBACK (on_filter_changed), self, 0);
-	g_signal_connect (self->pv->view, "start-interactive-search",
-	                  G_CALLBACK (on_start_interactive_search), self);
+	widget = GTK_WIDGET (gtk_builder_get_object (builder, "search-active-button"));
+	g_object_bind_property (self, "search-active",
+				widget, "active",
+				G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL);
+	widget = GTK_WIDGET (gtk_builder_get_object (builder, "search-bar"));
+	g_object_bind_property (self, "search-active",
+				widget, "search-mode-enabled",
+				G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL);
+	gtk_search_bar_connect_entry (GTK_SEARCH_BAR (widget), self->pv->filter_entry);
+	widget = GTK_WIDGET (gtk_builder_get_object (builder, "filter-type-button"));
+	popover = gtk_popover_new_from_model (widget, G_MENU_MODEL (gtk_builder_get_object (builder, "filter-type-menu")));
+	gtk_menu_button_set_popover (GTK_MENU_BUTTON (widget), popover);
 
-	/* Set focus to the current key list */
-	gtk_widget_grab_focus (GTK_WIDGET (self->pv->view));
-	g_signal_emit_by_name (self, "selection-changed");
-
-	/* To avoid flicker */
-	gtk_widget_show (GTK_WIDGET (self));
-	
 	/* Setup drops */
 	gtk_drag_dest_set (GTK_WIDGET (seahorse_catalog_get_window (SEAHORSE_CATALOG (self))),
 	                   GTK_DEST_DEFAULT_ALL, NULL, 0, GDK_ACTION_COPY);
@@ -714,17 +702,12 @@ seahorse_key_manager_constructed (GObject *object)
 	g_signal_connect_object (seahorse_catalog_get_window (SEAHORSE_CATALOG (self)), "drag-data-received",
 	                         G_CALLBACK (on_target_drag_data_received), self, 0);
 
-	g_signal_connect (self->pv->view, "button-press-event",
-	                  G_CALLBACK (on_keymanager_key_list_button_pressed), self);
-	g_signal_connect (self->pv->view, "row-activated",
-	                  G_CALLBACK (on_keymanager_row_activated), self);
-	g_signal_connect (self->pv->view, "popup-menu",
-	                  G_CALLBACK (on_keymanager_key_list_popup_menu), self);
-
 #ifdef REFACTOR_FIRST
 	/* To show first time dialog */
 	g_timeout_add_seconds (1, (GSourceFunc)on_first_timer, self);
 #endif
+
+	gtk_widget_show (GTK_WIDGET (self));
 }
 
 static void
@@ -752,6 +735,40 @@ seahorse_key_manager_finalize (GObject *obj)
 }
 
 static void
+seahorse_key_manager_get_property (GObject    *object,
+                                   guint       prop_id,
+                                   GValue     *value,
+                                   GParamSpec *pspec)
+{
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (object);
+	switch (prop_id) {
+	case PROP_SEARCH_ACTIVE:
+		g_value_set_boolean (value, self->pv->search_active);
+		break;
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+		break;
+	}
+}
+
+static void
+seahorse_key_manager_set_property (GObject      *object,
+                                   guint         prop_id,
+                                   const GValue *value,
+                                   GParamSpec   *pspec)
+{
+	SeahorseKeyManager *self = SEAHORSE_KEY_MANAGER (object);
+	switch (prop_id) {
+	case PROP_SEARCH_ACTIVE:
+		self->pv->search_active = g_value_get_boolean (value);
+		break;
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+		break;
+	}
+}
+
+static void
 seahorse_key_manager_class_init (SeahorseKeyManagerClass *klass)
 {
 	GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
@@ -760,7 +777,14 @@ seahorse_key_manager_class_init (SeahorseKeyManagerClass *klass)
 	g_type_class_add_private (klass, sizeof (SeahorseKeyManagerPrivate));
 
 	gobject_class->constructed = seahorse_key_manager_constructed;
+	gobject_class->get_property = seahorse_key_manager_get_property;
+	gobject_class->set_property = seahorse_key_manager_set_property;
 	gobject_class->finalize = seahorse_key_manager_finalize;
+
+	g_object_class_install_property (gobject_class,
+					 PROP_SEARCH_ACTIVE,
+					 g_param_spec_boolean ("search-active", "", "", FALSE,
+							       G_PARAM_READWRITE));
 
 	catalog_class->get_selected_objects = seahorse_key_manager_get_selected_objects;
 	catalog_class->get_focused_place = seahorse_key_manager_get_focused_place;

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/Seahorse">
+    <file alias="seahorse-generate-select.xml" preprocess="xml-stripblanks">src/seahorse-generate-select.xml</file>
+    <file alias="seahorse-key-manager.xml" preprocess="xml-stripblanks">src/seahorse-key-manager.xml</file>
+    <file alias="seahorse-paned.xml" preprocess="xml-stripblanks">src/seahorse-paned.xml</file>
+    <file alias="seahorse-change-passphrase.xml" preprocess="xml-stripblanks">src/seahorse-change-passphrase.xml</file>
+    <file alias="seahorse-add-uid.xml" preprocess="xml-stripblanks">pgp/seahorse-add-uid.xml</file>
+    <file alias="seahorse-signer.xml" preprocess="xml-stripblanks">pgp/seahorse-signer.xml</file>
+    <file alias="seahorse-add-subkey.xml" preprocess="xml-stripblanks">pgp/seahorse-add-subkey.xml</file>
+    <file alias="seahorse-keyserver-search.xml" preprocess="xml-stripblanks">pgp/seahorse-keyserver-search.xml</file>
+    <file alias="seahorse-pgp-private-key-properties.xml" preprocess="xml-stripblanks">pgp/seahorse-pgp-private-key-properties.xml</file>
+    <file alias="seahorse-revoke.xml" preprocess="xml-stripblanks">pgp/seahorse-revoke.xml</file>
+    <file alias="seahorse-expires.xml" preprocess="xml-stripblanks">pgp/seahorse-expires.xml</file>
+    <file alias="seahorse-keyserver-results.xml" preprocess="xml-stripblanks">pgp/seahorse-keyserver-results.xml</file>
+    <file alias="seahorse-pgp-generate.xml" preprocess="xml-stripblanks">pgp/seahorse-pgp-generate.xml</file>
+    <file alias="seahorse-sign.xml" preprocess="xml-stripblanks">pgp/seahorse-sign.xml</file>
+    <file alias="seahorse-pgp-public-key-properties.xml" preprocess="xml-stripblanks">pgp/seahorse-pgp-public-key-properties.xml</file>
+    <file alias="seahorse-keyserver-sync.xml" preprocess="xml-stripblanks">pgp/seahorse-keyserver-sync.xml</file>
+    <file alias="seahorse-pkcs11-generate.xml" preprocess="xml-stripblanks">pkcs11/seahorse-pkcs11-generate.xml</file>
+    <file alias="seahorse-pkcs11-request.xml" preprocess="xml-stripblanks">pkcs11/seahorse-pkcs11-request.xml</file>
+    <file alias="seahorse-add-keyring.xml" preprocess="xml-stripblanks">gkr/seahorse-add-keyring.xml</file>
+    <file alias="seahorse-gkr-keyring.xml" preprocess="xml-stripblanks">gkr/seahorse-gkr-keyring.xml</file>
+    <file alias="seahorse-gkr-add-item.xml" preprocess="xml-stripblanks">gkr/seahorse-gkr-add-item.xml</file>
+    <file alias="seahorse-gkr-item-properties.xml" preprocess="xml-stripblanks">gkr/seahorse-gkr-item-properties.xml</file>
+    <file alias="seahorse-ssh-key-properties.xml" preprocess="xml-stripblanks">ssh/seahorse-ssh-key-properties.xml</file>
+    <file alias="seahorse-ssh-generate.xml" preprocess="xml-stripblanks">ssh/seahorse-ssh-generate.xml</file>
+    <file alias="seahorse-ssh-upload.xml" preprocess="xml-stripblanks">ssh/seahorse-ssh-upload.xml</file>
+    <file alias="seahorse-progress.xml" preprocess="xml-stripblanks">libseahorse/seahorse-progress.xml</file>
+    <file alias="seahorse-prefs.xml" preprocess="xml-stripblanks">libseahorse/seahorse-prefs.xml</file>
+    <file alias="seahorse-add-keyserver.xml" preprocess="xml-stripblanks">libseahorse/seahorse-add-keyserver.xml</file>
+    <file alias="seahorse.css">libseahorse/seahorse.css</file>
+  </gresource>
+</gresources>
